@@ -17,4 +17,4 @@ Single-context: root `CONTEXT.md` + `docs/adr/`. See `docs/agents/domain.md`.
 This repository is **public Epok core** only (Interaction, recorder, replay, Storage Provider).
 
 - Do not add hosted-product design, Outcome/Notification vocabulary, workspace/catalog/API/MCP product specs, or default commercial endpoints.
-- Derived product layers belong in the private `epok-saas` repository.
+- Derived product layers belong in the separate private product repository.
