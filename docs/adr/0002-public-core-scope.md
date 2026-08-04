@@ -1,0 +1,3 @@
+# This repository is public core only
+
+Epok’s public repository contains Interaction, recorder, replay, and Storage Provider contracts (including configurable opaque remote transport with no default hosted URL). Hosted-product design and implementation live in a separate private repository. Source-available licensing (Business Source License 1.1) and a CLA protect against using this codebase as a competing commercial hosted Interaction service, while accepting that clean-room reimplementations of the public wire format are a market risk. README may advertise that a hosted product exists; public clients must not default to it.

@@ -1,0 +1,13 @@
+name: leak-guard
+on:
+  push:
+  pull_request:
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install ripgrep
+        run: sudo apt-get update && sudo apt-get install -y ripgrep
+      - name: Check for SaaS vocabulary leak
+        run: ./scripts/check-no-saas-leak.sh
