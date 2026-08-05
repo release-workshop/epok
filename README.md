@@ -17,13 +17,13 @@ Public, source-available core:
 
 | Package | Responsibility |
 | --- | --- |
-| `@epok/core` | Shared contracts: **Interaction** manifest shape, **CAS object** references, **Storage Provider** interface, and replay request matching. Fetch-shaped / WinterCG-friendly — no Node-only APIs. |
-| `@epok/recorder` | Observes one inbound HTTP execution and its outbound **Dependency** timeline, sanitizes, finalizes an Interaction, and persists via a Storage Provider. Node HTTP attach seam lives here. |
-| `@epok/storage-fs` | Filesystem **Storage Provider** for manifests and CAS objects. |
-| `@epok/storage-memory` | In-memory **Storage Provider** for tests and local experiments (not durable production persistence). |
-| `@epok/replay` | Consumes stored Interactions for executable re-run and validation. |
-| `@epok/cli` | CLI (`epok`) over replay run/validate. |
-| `examples/demo` | Unpublished in-repo golden-path demo (not published to npm). |
+| [`@epok/core`](packages/core/README.md) | Shared contracts: **Interaction** manifest shape, **CAS object** references, **Storage Provider** interface, and replay request matching. Fetch-shaped / WinterCG-friendly — no Node-only APIs. |
+| [`@epok/recorder`](packages/recorder/README.md) | Observes one inbound HTTP execution and its outbound **Dependency** timeline, sanitizes, finalizes an Interaction, and persists via a Storage Provider. Node HTTP attach seam lives here. |
+| [`@epok/storage-fs`](packages/storage-fs/README.md) | Filesystem **Storage Provider** for manifests and CAS objects. |
+| [`@epok/storage-memory`](packages/storage-memory/README.md) | In-memory **Storage Provider** for tests and local experiments (not durable production persistence). |
+| [`@epok/replay`](packages/replay/README.md) | Consumes stored Interactions for executable re-run and validation. |
+| [`@epok/cli`](packages/cli/README.md) | CLI (`epok`) over replay run/validate. |
+| [`examples/demo`](examples/demo/README.md) | Unpublished in-repo golden-path demo (not published to npm). |
 
 ## Hosted product
 
