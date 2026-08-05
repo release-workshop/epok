@@ -1,0 +1,22 @@
+{
+  "name": "@epok/demo",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Unpublished in-repo demo for the Epok golden path",
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "start": "node dist/server.js"
+  },
+  "dependencies": {
+    "@epok/core": "workspace:*",
+    "@epok/recorder": "workspace:*",
+    "@epok/replay": "workspace:*",
+    "@epok/storage-fs": "workspace:*",
+    "@epok/storage-memory": "workspace:*"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

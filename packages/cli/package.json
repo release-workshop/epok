@@ -1,0 +1,28 @@
+{
+  "name": "@epok/cli",
+  "version": "0.0.0",
+  "description": "Epok CLI (bin: epok)",
+  "type": "module",
+  "bin": {
+    "epok": "./dist/bin.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@epok/core": "workspace:*",
+    "@epok/replay": "workspace:*",
+    "@epok/storage-fs": "workspace:*"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

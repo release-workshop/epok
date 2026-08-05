@@ -1,0 +1,23 @@
+{
+  "name": "@epok/storage-memory",
+  "version": "0.0.0",
+  "description": "In-memory Storage Provider for Epok (tests / non-production)",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@epok/core": "workspace:*"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

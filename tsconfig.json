@@ -1,0 +1,12 @@
+{
+  "files": [],
+  "references": [
+    { "path": "packages/core" },
+    { "path": "packages/recorder" },
+    { "path": "packages/storage-fs" },
+    { "path": "packages/storage-memory" },
+    { "path": "packages/replay" },
+    { "path": "packages/cli" },
+    { "path": "examples/demo" }
+  ]
+}
