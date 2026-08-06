@@ -4,11 +4,11 @@ Unpublished in-repo example for the record → persist → replay → validate g
 
 ## Responsibility
 
-Tiny no-framework Node server that demonstrates `@epok/recorder`, a filesystem **Storage Provider**, and `@epok/replay` / CLI against a real **Interaction**. Not published to npm.
+Tiny no-framework Node server that demonstrates `@epok/recorder` observe-only attach (inbound HTTP + outbound `fetch`), then later a filesystem **Storage Provider** and `@epok/replay` / CLI against a real **Interaction**. Not published to npm.
 
 ## Status
 
-Placeholder HTTP server only. Full golden-path wiring lands in the CLI / example slice.
+Observe-only proof: concurrent requests log deterministic inbound + dependency wide events. Persist / sanitize / replay land in later slices.
 
 ## Run
 
@@ -19,6 +19,17 @@ pnpm install
 pnpm build
 pnpm --filter @epok/demo start
 ```
+
+In another terminal, drive concurrent requests:
+
+```bash
+for i in $(seq 0 19); do
+  curl -s -H "x-request-id: req-$i" "http://127.0.0.1:3456/" &
+done
+wait
+```
+
+Demo stdout should show matching `requestId` values on inbound and dependency `observed` events for each `interactionId`.
 
 ## Docs
 

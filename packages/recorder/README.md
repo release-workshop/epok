@@ -13,7 +13,7 @@ Core observation contracts stay Fetch-shaped in `@epok/core`. This package adapt
 
 ## Status
 
-`attachRecorder` is a typed seam stub; capture implementation lands in later spine slices.
+`attachRecorder` installs observe-only Node attach: request-scoped context (`AsyncLocalStorage`), inbound `http.Server` wrapping, outbound `fetch` interception, and wide structured events. Sanitize / finalize / persist land in later spine slices.
 
 ## Install
 

@@ -2,8 +2,12 @@ import type {
   RecorderObservationHooks,
   StorageProvider,
 } from "@epok/core";
+import type { RecorderWideEvent } from "./events.js";
+import { installInboundAttach } from "./inbound.js";
+import { installFetchIntercept } from "./outbound.js";
 
 export type { RecorderObservationHooks, StorageProvider };
+export type { RecorderWideEvent } from "./events.js";
 
 /**
  * Options for attaching the recorder to a Node HTTP server.
@@ -12,6 +16,8 @@ export type { RecorderObservationHooks, StorageProvider };
 export interface AttachRecorderOptions {
   storage: StorageProvider;
   hooks?: RecorderObservationHooks;
+  /** Wide structured self-observation events (observed, drops, context failures). */
+  onEvent?: (event: RecorderWideEvent) => void;
 }
 
 export interface RecorderHandle {
@@ -19,11 +25,28 @@ export interface RecorderHandle {
 }
 
 /**
- * Attach Epok recording to the current Node process.
- * Implementation lands in later slices; this export locks the package seam.
+ * Attach Epok observe-only recording to the current Node process:
+ * inbound `http.Server` request context + outbound `fetch` interception.
  */
-export function attachRecorder(
-  _options: AttachRecorderOptions,
-): RecorderHandle {
-  throw new Error("@epok/recorder: attachRecorder is not implemented yet");
+export function attachRecorder(options: AttachRecorderOptions): RecorderHandle {
+  const emit = (event: RecorderWideEvent): void => {
+    try {
+      options.onEvent?.(event);
+    } catch {
+      // Fail-open: subscriber errors must not affect the host.
+    }
+  };
+
+  const restoreInbound = installInboundAttach(options.hooks, emit);
+  const restoreFetch = installFetchIntercept(options.hooks, emit);
+
+  let detached = false;
+  return {
+    detach(): void {
+      if (detached) return;
+      detached = true;
+      restoreFetch();
+      restoreInbound();
+    },
+  };
 }
