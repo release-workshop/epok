@@ -19,24 +19,22 @@ import {
 } from "@epok/core";
 import type { RecorderWideEvent } from "./events.js";
 
-export interface ObservedHttpRequest {
+export interface ObservedHttpMessage {
   protocol: string;
-  method: string;
-  url: string;
   headers: HeaderField[];
   body: Uint8Array;
   contentType?: string | null;
   contentEncoding?: string | null;
 }
 
-export interface ObservedHttpResponse {
-  protocol: string;
+export interface ObservedHttpRequest extends ObservedHttpMessage {
+  method: string;
+  url: string;
+}
+
+export interface ObservedHttpResponse extends ObservedHttpMessage {
   status: number;
   statusText?: string;
-  headers: HeaderField[];
-  body: Uint8Array;
-  contentType?: string | null;
-  contentEncoding?: string | null;
 }
 
 export interface ObservedDependency {
@@ -194,33 +192,61 @@ function rememberPlacement(
   }
 }
 
+function sanitizeMessageParts(
+  sanitizer: Sanitizer,
+  message: ObservedHttpMessage,
+  acc: ObjectAccumulator,
+  url?: string,
+): {
+  protocol: string;
+  headers: HeaderField[];
+  url?: string;
+  body: { cas: CasPlacement["ref"] };
+} {
+  const sanitized = sanitizer.sanitize({
+    headers: message.headers,
+    body: message.body,
+    contentType: contentTypeOf(message.headers, message.contentType),
+    ...(url !== undefined ? { url } : {}),
+  });
+  const placement = placeSanitizedBody(
+    sanitized.body ?? new Uint8Array(),
+    contentTypeOf(sanitized.headers, message.contentType),
+    message.contentEncoding ?? null,
+  );
+  rememberPlacement(acc, placement);
+
+  const parts: {
+    protocol: string;
+    headers: HeaderField[];
+    url?: string;
+    body: { cas: CasPlacement["ref"] };
+  } = {
+    protocol: message.protocol,
+    headers: sanitized.headers,
+    body: { cas: placement.ref },
+  };
+  if (url !== undefined && sanitized.url !== undefined) {
+    parts.url = sanitized.url;
+  }
+  return parts;
+}
+
 function sanitizeRequestMessage(
   sanitizer: Sanitizer,
   request: ObservedHttpRequest,
   acc: ObjectAccumulator,
 ): HttpRequestMessage {
-  const sanitized = sanitizer.sanitize({
-    headers: request.headers,
-    url: request.url,
-    body: request.body,
-    contentType: contentTypeOf(request.headers, request.contentType),
-  });
-  const bodyBytes = sanitized.body ?? new Uint8Array();
-  const placement = placeSanitizedBody(
-    bodyBytes,
-    contentTypeOf(sanitized.headers, request.contentType),
-    request.contentEncoding ?? null,
-  );
-  rememberPlacement(acc, placement);
-  if (sanitized.url === undefined) {
+  const parts = sanitizeMessageParts(sanitizer, request, acc, request.url);
+  if (parts.url === undefined) {
     throw new Error("sanitizer omitted request URL");
   }
   return {
-    protocol: request.protocol,
+    protocol: parts.protocol,
     method: request.method,
-    url: sanitized.url,
-    headers: sanitized.headers,
-    body: { cas: placement.ref },
+    url: parts.url,
+    headers: parts.headers,
+    body: parts.body,
   };
 }
 
@@ -229,23 +255,12 @@ function sanitizeResponseMessage(
   response: ObservedHttpResponse,
   acc: ObjectAccumulator,
 ): HttpResponseMessage {
-  const sanitized = sanitizer.sanitize({
-    headers: response.headers,
-    body: response.body,
-    contentType: contentTypeOf(response.headers, response.contentType),
-  });
-  const bodyBytes = sanitized.body ?? new Uint8Array();
-  const placement = placeSanitizedBody(
-    bodyBytes,
-    contentTypeOf(sanitized.headers, response.contentType),
-    response.contentEncoding ?? null,
-  );
-  rememberPlacement(acc, placement);
+  const parts = sanitizeMessageParts(sanitizer, response, acc);
   const message: HttpResponseMessage = {
-    protocol: response.protocol,
+    protocol: parts.protocol,
     status: response.status,
-    headers: sanitized.headers,
-    body: { cas: placement.ref },
+    headers: parts.headers,
+    body: parts.body,
   };
   if (response.statusText !== undefined) {
     message.statusText = response.statusText;

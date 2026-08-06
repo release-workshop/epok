@@ -7,20 +7,20 @@ import type {
 /** Visible replacement for redacted secret values. */
 export const REDACTION_SENTINEL = "[Epok:redacted]";
 
-export const SANITIZER_VERSION = "1.0.0";
+const SANITIZER_VERSION = "1.0.0";
 
-export const MINIMAL_RULESET_ID = "epok.minimal";
+const MINIMAL_RULESET_ID = "epok.minimal";
 
 /**
  * SHA-256 (hex) of the frozen minimal ruleset definition JSON:
- * `{ id, headers, keys, sentinel }` with the arrays/constants below.
+ * `{ id, headers, keys, sentinel }` with the private lists below.
  * Precomputed so `@epok/core` stays free of Node-only crypto APIs.
  */
-export const MINIMAL_RULESET_HASH =
+const MINIMAL_RULESET_HASH =
   "373d8477677c1f37e0ca32c3bd36a18536fb980fc13f3feafc1adafa449c3125";
 
 /** Header names redacted by the Epok-owned minimal ruleset (case-insensitive). */
-export const SENSITIVE_HEADER_NAMES = [
+const SENSITIVE_HEADER_NAMES = [
   "authorization",
   "proxy-authorization",
   "cookie",
@@ -33,7 +33,7 @@ export const SENSITIVE_HEADER_NAMES = [
  * Query / JSON / form keys redacted by the minimal ruleset (case-insensitive).
  * Matching ignores `-` / `_` so `api_key`, `api-key`, and `apikey` align.
  */
-export const SENSITIVE_KEY_NAMES = [
+const SENSITIVE_KEY_NAMES = [
   "password",
   "secret",
   "token",
@@ -181,22 +181,18 @@ function applyMinimalRules(input: SanitizeMessageInput): SanitizeMessageResult {
   return result;
 }
 
-export function minimalRulesetIdentity(): RulesetIdentity {
-  return { id: MINIMAL_RULESET_ID, hash: MINIMAL_RULESET_HASH };
-}
-
 /**
  * Build the Epok-owned minimal sanitizer, optionally composing extension rules.
+ * Ruleset identity is on the returned `sanitizer.ruleset` / `sanitizer.identity`.
  */
 export function createSanitizer(
   options: CreateSanitizerOptions = {},
 ): Sanitizer {
   const extraRules = options.extraRules ?? [];
-  const ruleset = minimalRulesetIdentity();
 
   return {
     identity: { version: SANITIZER_VERSION },
-    ruleset,
+    ruleset: { id: MINIMAL_RULESET_ID, hash: MINIMAL_RULESET_HASH },
     sanitize(input: SanitizeMessageInput): SanitizeMessageResult {
       let current = applyMinimalRules(input);
       for (const rule of extraRules) {

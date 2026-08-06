@@ -11,6 +11,7 @@ export type {
   FinalizeObservationOptions,
   ObservedCapture,
   ObservedDependency,
+  ObservedHttpMessage,
   ObservedHttpRequest,
   ObservedHttpResponse,
 } from "./finalize.js";
