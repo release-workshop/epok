@@ -61,7 +61,10 @@ function logEvent(event: RecorderWideEvent): void {
     );
     return;
   }
-  if (event.type === "context_missing" || event.type === "observation_dropped") {
+  if (
+    event.type === "context_missing" ||
+    event.type === "observation_dropped"
+  ) {
     console.log(JSON.stringify(event));
   }
 }
@@ -77,7 +80,9 @@ const dependency = createServer((_req, res) => {
 });
 
 await new Promise<void>((resolve, reject) => {
-  dependency.listen(dependencyPort, "127.0.0.1", () => resolve());
+  dependency.listen(dependencyPort, "127.0.0.1", () => {
+    resolve();
+  });
   dependency.once("error", reject);
 });
 

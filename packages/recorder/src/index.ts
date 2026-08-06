@@ -1,7 +1,4 @@
-import type {
-  RecorderObservationHooks,
-  StorageProvider,
-} from "@epok/core";
+import type { RecorderObservationHooks, StorageProvider } from "@epok/core";
 import type { RecorderWideEvent } from "./events.js";
 import { installInboundAttach } from "./inbound.js";
 import { installFetchIntercept } from "./outbound.js";

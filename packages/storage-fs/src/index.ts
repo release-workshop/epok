@@ -12,5 +12,7 @@ export interface FsStorageProviderOptions {
 export function createFsStorageProvider(
   _options: FsStorageProviderOptions,
 ): StorageProvider {
-  throw new Error("@epok/storage-fs: createFsStorageProvider is not implemented yet");
+  throw new Error(
+    "@epok/storage-fs: createFsStorageProvider is not implemented yet",
+  );
 }

@@ -15,7 +15,8 @@ export function installInboundAttach(
   hooks: RecorderObservationHooks | undefined,
   emit: EmitWideEvent,
 ): () => void {
-  const originalEmit = http.Server.prototype.emit;
+  // Bound later via Reflect.apply with an explicit receiver.
+  const originalEmit: ServerEmit = Reflect.get(http.Server.prototype, "emit");
 
   function patchedEmit(
     this: http.Server,

@@ -1,5 +1,6 @@
 .scratch/
 node_modules/
+.pnpm-store/
 dist/
 .DS_Store
 *.log

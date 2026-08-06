@@ -29,7 +29,9 @@ export interface ReplayResult {
  * Executable re-run entry point (strict + instant in MVP).
  * Implementation lands in the replay spine slice.
  */
-export async function runReplay(_options: ReplayRunOptions): Promise<ReplayResult> {
+export async function runReplay(
+  _options: ReplayRunOptions,
+): Promise<ReplayResult> {
   throw new Error("@epok/replay: runReplay is not implemented yet");
 }
 

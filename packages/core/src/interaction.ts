@@ -141,7 +141,8 @@ export interface Integrity {
 export interface InteractionManifest {
   /** RFC 9562 UUIDv7. */
   id: string;
-  specVersion: SpecVersion | string;
+  /** Open string so readers can accept unknown future versions. */
+  specVersion: string;
   metadata: InteractionMetadata;
   inbound: HttpRequestMessage;
   dependencies: Dependency[];

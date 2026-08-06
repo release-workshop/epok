@@ -82,10 +82,15 @@ describe("replay request matching", () => {
   });
 
   it("returns undefined when no candidate matches", () => {
-    const recorded = [dep({ seq: 1, method: "GET", url: "https://api.test/a" })];
+    const recorded = [
+      dep({ seq: 1, method: "GET", url: "https://api.test/a" }),
+    ];
 
     expect(
-      matchDependency(recorded, { method: "DELETE", url: "https://api.test/a" }),
+      matchDependency(recorded, {
+        method: "DELETE",
+        url: "https://api.test/a",
+      }),
     ).toBeUndefined();
   });
 });

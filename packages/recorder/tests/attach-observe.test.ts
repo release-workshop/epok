@@ -67,7 +67,8 @@ describe("attachRecorder observe-only", () => {
       if (event.phase === "inbound") {
         row.inboundId = event.requestHeaders?.["x-request-id"];
       } else if (event.phase === "dependency") {
-        row.dependencyId = new URL(event.url).searchParams.get("id") ?? undefined;
+        row.dependencyId =
+          new URL(event.url).searchParams.get("id") ?? undefined;
       }
       byInteraction.set(event.interactionId, row);
     }
@@ -127,7 +128,8 @@ describe("attachRecorder observe-only", () => {
     expect(await response.text()).toBe("host-ok");
     expect(
       events.some(
-        (e) => e.type === "observation_dropped" && e.reason === "observer_threw",
+        (e) =>
+          e.type === "observation_dropped" && e.reason === "observer_threw",
       ),
     ).toBe(true);
   });
@@ -164,7 +166,9 @@ describe("attachRecorder observe-only", () => {
 
 function listen(s: Server): Promise<void> {
   return new Promise((resolve, reject) => {
-    s.listen(0, "127.0.0.1", () => resolve());
+    s.listen(0, "127.0.0.1", () => {
+      resolve();
+    });
     s.once("error", reject);
   });
 }
