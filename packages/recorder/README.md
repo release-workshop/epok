@@ -13,7 +13,7 @@ Core observation contracts stay Fetch-shaped in `@epok/core`. This package adapt
 
 ## Status
 
-`attachRecorder` installs observe-only Node attach: request-scoped context (`AsyncLocalStorage`), inbound `http.Server` wrapping, outbound `fetch` interception, and wide structured events. Sanitize / finalize / persist land in later spine slices.
+`attachRecorder` installs Node attach (request-scoped context, inbound `http.Server` wrap, outbound `fetch` intercept, wide events). `finalizeObservation` sanitizes a collected capture into an Interaction manifest + CAS object references (fail-open drop on sanitizer failure). Persistence handoff lands in the next spine slice.
 
 ## Install
 

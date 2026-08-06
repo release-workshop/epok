@@ -1,5 +1,5 @@
 /**
- * Wide structured self-observation events for recorder health (observe-only).
+ * Wide structured self-observation events for recorder health.
  * Fail-open: emitting these must never fail the host request path.
  */
 export type RecorderWideEvent =
@@ -24,5 +24,16 @@ export type RecorderWideEvent =
       type: "observation_dropped";
       reason: string;
       interactionId?: string;
+      cause?: string;
+    }
+  | {
+      type: "interaction_finalized";
+      interactionId: string;
+      manifestHash: string;
+    }
+  | {
+      type: "interaction_dropped";
+      reason: string;
+      interactionId: string;
       cause?: string;
     };

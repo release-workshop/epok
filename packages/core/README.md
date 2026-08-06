@@ -9,6 +9,7 @@ Shared contracts for Epok’s public core. Fetch-shaped / WinterCG-friendly — 
 - **Storage Provider** interface and typed `StorageError`
 - Strict replay request matching (`method` + URL, optional `seq`)
 - Observation hooks using Fetch `Request` / `Response`
+- Epok-owned minimal **sanitizer** ruleset + extension point (header/query/JSON-form redaction)
 
 ## Install
 

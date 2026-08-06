@@ -47,3 +47,21 @@ export type {
   FetchLike,
   RecorderObservationHooks,
 } from "./observation.js";
+
+export {
+  MINIMAL_RULESET_HASH,
+  MINIMAL_RULESET_ID,
+  REDACTION_SENTINEL,
+  SANITIZER_VERSION,
+  SENSITIVE_HEADER_NAMES,
+  SENSITIVE_KEY_NAMES,
+  createSanitizer,
+  minimalRulesetIdentity,
+} from "./sanitize.js";
+export type {
+  CreateSanitizerOptions,
+  SanitizeMessageInput,
+  SanitizeMessageResult,
+  Sanitizer,
+  SanitizerRule,
+} from "./sanitize.js";

@@ -5,6 +5,15 @@ import { installFetchIntercept } from "./outbound.js";
 
 export type { RecorderObservationHooks, StorageProvider };
 export type { RecorderWideEvent } from "./events.js";
+export { finalizeObservation } from "./finalize.js";
+export type {
+  FinalizedInteraction,
+  FinalizeObservationOptions,
+  ObservedCapture,
+  ObservedDependency,
+  ObservedHttpRequest,
+  ObservedHttpResponse,
+} from "./finalize.js";
 
 /**
  * Options for attaching the recorder to a Node HTTP server.
