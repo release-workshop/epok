@@ -6,16 +6,22 @@ In-memory **Storage Provider** for Interaction manifests and **CAS objects**.
 
 Same Storage Provider seam as `@epok/storage-fs`, backed by process memory. Intended for tests and local experiments.
 
-**Not durable.** Do not use as production persistence.
+**Not durable. Not for production persistence.** Data lives only in the current process and is lost on exit. Use `@epok/storage-fs` (or a remote provider) when Interactions must survive process restart.
 
-## Status
-
-`createMemoryStorageProvider` is a typed seam stub; implementation lands in the storage-provider slice.
+`putManifest` refuses to succeed unless every required CAS object is either embedded in the manifest or already stored.
 
 ## Install
 
 ```bash
 pnpm add @epok/storage-memory
+```
+
+## Usage
+
+```ts
+import { createMemoryStorageProvider } from "@epok/storage-memory";
+
+const storage = createMemoryStorageProvider();
 ```
 
 ## Docs

@@ -6,7 +6,7 @@ Shared contracts for Epok’s public core. Fetch-shaped / WinterCG-friendly — 
 
 - **Interaction** manifest types (inbound request, **Dependency** timeline, host response, integrity)
 - **CAS object** references and embed threshold helpers
-- **Storage Provider** interface and typed `StorageError`
+- **Storage Provider** interface, typed `StorageError`, and CAS closure / hash verification helpers
 - Strict replay request matching (`method` + URL, optional `seq`)
 - Observation hooks using Fetch `Request` / `Response`
 - Epok-owned minimal **sanitizer** ruleset + extension point (header/query/JSON-form redaction)

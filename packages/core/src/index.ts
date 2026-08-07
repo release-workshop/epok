@@ -39,6 +39,12 @@ export type {
   StorageProvider,
 } from "./storage.js";
 
+export {
+  assertCasObjectIntegrity,
+  assertManifestCasClosure,
+} from "./storage-verify.js";
+export type { Sha256HexFn } from "./storage-verify.js";
+
 export { matchDependency, matchKeyFromDependency } from "./replay.js";
 export type { ReplayMatchKey, ReplayMatchOptions } from "./replay.js";
 
