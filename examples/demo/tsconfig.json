@@ -8,6 +8,7 @@
   },
   "include": ["src/**/*.ts"],
   "references": [
+    { "path": "../../packages/cli" },
     { "path": "../../packages/core" },
     { "path": "../../packages/recorder" },
     { "path": "../../packages/replay" },

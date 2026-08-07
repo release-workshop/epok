@@ -1,45 +1,38 @@
-import { createServer } from "node:http";
+import {
+  createServer,
+  type IncomingMessage,
+  type ServerResponse,
+} from "node:http";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { attachRecorder, type RecorderWideEvent } from "@epok/recorder";
-import type { StorageProvider } from "@epok/core";
+import { createFsStorageProvider } from "@epok/storage-fs";
+import { handleRequest } from "./handler.js";
 
 /**
- * Observe-only demo: concurrent inbound requests each call one outbound fetch.
- * Wide events log inbound + dependency pairs keyed by interaction id.
- * Persist/sanitize land in later slices — storage is unused here.
+ * Long-running observe demo. Prefer `pnpm --filter @epok/demo golden` for the
+ * record → persist → replay → validate path (see README / docs/quickstart.md).
  */
-const unusedStorage: StorageProvider = {
-  durability: "best-effort",
-  putManifest: async () => {
-    throw new Error("demo observe-only: storage not used");
-  },
-  getManifest: async () => {
-    throw new Error("demo observe-only: storage not used");
-  },
-  putObject: async () => {
-    throw new Error("demo observe-only: storage not used");
-  },
-  getObject: async () => {
-    throw new Error("demo observe-only: storage not used");
-  },
-  hasObject: async () => {
-    throw new Error("demo observe-only: storage not used");
-  },
-};
+const demoRoot = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "..",
+);
+const storageDir =
+  process.env.EPOK_STORAGE_DIR ?? path.join(demoRoot, ".epok-data");
+const storage = createFsStorageProvider({ rootDir: storageDir });
 
 const port = Number(process.env.PORT ?? 3456);
 const dependencyPort = Number(process.env.DEPENDENCY_PORT ?? 3457);
+const dependencyBase = `http://127.0.0.1:${dependencyPort}`;
 
 function logEvent(event: RecorderWideEvent): void {
   if (event.type === "observed" && event.phase === "inbound") {
-    // Process-wide attach also observes the local dependency server; skip those.
     if (event.url.includes(`:${dependencyPort}/`)) return;
-    const requestId = event.requestHeaders?.["x-request-id"] ?? "-";
     console.log(
       JSON.stringify({
         type: event.type,
         phase: event.phase,
         interactionId: event.interactionId,
-        requestId,
         method: event.method,
         url: event.url,
       }),
@@ -47,36 +40,27 @@ function logEvent(event: RecorderWideEvent): void {
     return;
   }
   if (event.type === "observed" && event.phase === "dependency") {
-    const requestId = new URL(event.url).searchParams.get("id") ?? "-";
     console.log(
       JSON.stringify({
         type: event.type,
         phase: event.phase,
         interactionId: event.interactionId,
-        requestId,
         method: event.method,
         url: event.url,
         status: event.status,
       }),
     );
-    return;
-  }
-  if (
-    event.type === "context_missing" ||
-    event.type === "observation_dropped"
-  ) {
-    console.log(JSON.stringify(event));
   }
 }
 
 attachRecorder({
-  storage: unusedStorage,
+  storage,
   onEvent: logEvent,
 });
 
 const dependency = createServer((_req, res) => {
-  res.writeHead(200, { "content-type": "text/plain; charset=utf-8" });
-  res.end("dependency-ok\n");
+  res.writeHead(200, { "content-type": "application/json; charset=utf-8" });
+  res.end(JSON.stringify({ quote: 42 }));
 });
 
 await new Promise<void>((resolve, reject) => {
@@ -86,21 +70,46 @@ await new Promise<void>((resolve, reject) => {
   dependency.once("error", reject);
 });
 
-const server = createServer(async (req, res) => {
-  const requestId = String(req.headers["x-request-id"] ?? "anon");
-  const depUrl = `http://127.0.0.1:${dependencyPort}/dep?id=${encodeURIComponent(requestId)}`;
-  const depRes = await fetch(depUrl);
-  const depBody = await depRes.text();
-  res.writeHead(200, { "content-type": "text/plain; charset=utf-8" });
-  res.end(`ok requestId=${requestId} dep=${depBody.trim()}\n`);
+const server = createServer((req, res) => {
+  void handleInbound(req, res);
 });
 
+async function handleInbound(
+  req: IncomingMessage,
+  res: ServerResponse,
+): Promise<void> {
+  try {
+    const host = req.headers.host ?? "127.0.0.1";
+    const url = `http://${host}${req.url ?? "/"}`;
+    const headers = new Headers();
+    for (const [key, value] of Object.entries(req.headers)) {
+      if (value === undefined) continue;
+      headers.set(key, Array.isArray(value) ? value.join(", ") : value);
+    }
+    if (!headers.has("x-epok-dependency-base")) {
+      headers.set("x-epok-dependency-base", dependencyBase);
+    }
+    const request = new Request(url, { method: req.method ?? "GET", headers });
+    const response = await handleRequest(request);
+    const body = Buffer.from(await response.arrayBuffer());
+    res.writeHead(response.status, {
+      "content-type":
+        response.headers.get("content-type") ?? "application/json",
+    });
+    res.end(body);
+  } catch (err) {
+    res.writeHead(500, { "content-type": "text/plain; charset=utf-8" });
+    res.end(err instanceof Error ? err.message : String(err));
+  }
+}
 server.listen(port, "127.0.0.1", () => {
   console.log(
     JSON.stringify({
       type: "demo_ready",
       url: `http://127.0.0.1:${port}`,
-      dependency: `http://127.0.0.1:${dependencyPort}`,
+      dependency: dependencyBase,
+      storageDir,
+      hint: "For record→persist→replay→validate, run: pnpm --filter @epok/demo golden",
     }),
   );
 });

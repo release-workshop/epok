@@ -7,9 +7,12 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "start": "node dist/server.js"
+    "start": "node dist/server.js",
+    "record": "node dist/record.js",
+    "golden": "node dist/golden.js"
   },
   "dependencies": {
+    "@epok/cli": "workspace:*",
     "@epok/core": "workspace:*",
     "@epok/recorder": "workspace:*",
     "@epok/replay": "workspace:*",

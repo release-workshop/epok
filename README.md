@@ -31,11 +31,12 @@ A hosted storage and catalog product for Interactions is available separately. T
 
 ## Docs
 
-1. [Vision & architecture](docs/01-vision-architecture.md)
-2. [Recorder](docs/02-recorder-spec.md)
-3. [Interaction](docs/03-interaction-spec.md)
-4. [Storage Provider](docs/04-storage-provider-spec.md)
-5. [Replay](docs/05-replay-spec.md)
+1. [Quickstart](docs/quickstart.md) — record → persist → replay → validate
+2. [Vision & architecture](docs/01-vision-architecture.md)
+3. [Recorder](docs/02-recorder-spec.md)
+4. [Interaction](docs/03-interaction-spec.md)
+5. [Storage Provider](docs/04-storage-provider-spec.md)
+6. [Replay](docs/05-replay-spec.md)
 
 ## Development
 
@@ -44,6 +45,12 @@ pnpm install
 pnpm build
 pnpm typecheck
 pnpm test
+```
+
+First-run golden path:
+
+```bash
+pnpm --filter @epok/demo golden
 ```
 
 ## License

@@ -2,36 +2,56 @@
 
 Unpublished in-repo example for the record → persist → replay → validate golden path.
 
-## Responsibility
-
-Tiny no-framework Node server that demonstrates `@epok/recorder` observe-only attach (inbound HTTP + outbound `fetch`), then later a filesystem **Storage Provider** and `@epok/replay` / CLI against a real **Interaction**. Not published to npm.
-
-## Status
-
-Observe-only proof: concurrent requests log deterministic inbound + dependency wide events. Persist / sanitize / replay land in later slices.
-
-## Run
+## Quickstart
 
 From the repo root:
 
 ```bash
 pnpm install
 pnpm build
-pnpm --filter @epok/demo start
+pnpm --filter @epok/demo golden
 ```
 
-In another terminal, drive concurrent requests:
+That records one Interaction to `examples/demo/.epok-data`, validates CAS closure, then executable-replays with dependency injection (no external network on replay).
+
+## Step by step
 
 ```bash
-for i in $(seq 0 19); do
-  curl -s -H "x-request-id: req-$i" "http://127.0.0.1:3456/" &
-done
-wait
+pnpm --filter @epok/demo record
 ```
 
-Demo stdout should show matching `requestId` values on inbound and dependency `observed` events for each `interactionId`.
+Follow the printed commands, or substitute the printed `interactionId`:
+
+```bash
+pnpm --filter @epok/cli exec epok replay validate \
+  --dir examples/demo/.epok-data \
+  <interaction-id>
+
+pnpm --filter @epok/cli exec epok replay run \
+  --dir examples/demo/.epok-data \
+  --handler examples/demo/dist/handler.js \
+  <interaction-id>
+```
+
+PASS / FAIL lines are printed on stdout (PASS) or stderr (FAIL). Add `--report json` for machine-readable output.
+
+## What it shows
+
+- Filesystem **Storage Provider** (`@epok/storage-fs`) under `.epok-data`
+- Sanitize + finalize via `@epok/recorder`
+- CLI `epok replay validate` (integrity) and `epok replay run` (injected dependencies)
+
+## Optional long-running server
+
+```bash
+pnpm --filter @epok/demo start
+curl -s -H "x-request-id: req-1" http://127.0.0.1:3456/
+```
+
+Observe-only attach logs inbound + dependency pairs. Prefer `golden` for the full persist/replay proof.
 
 ## Docs
 
-- Root [README](../../README.md) packages table
-- [Recorder](../../docs/02-recorder-spec.md) · [Interaction](../../docs/03-interaction-spec.md) · [Replay](../../docs/05-replay-spec.md)
+- [Quickstart](../../docs/quickstart.md)
+- Root [README](../../README.md)
+- [Replay](../../docs/05-replay-spec.md) · [Storage Provider](../../docs/04-storage-provider-spec.md)

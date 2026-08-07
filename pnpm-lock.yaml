@@ -41,6 +41,9 @@ importers:
 
   examples/demo:
     dependencies:
+      '@epok/cli':
+        specifier: workspace:*
+        version: link:../../packages/cli
       '@epok/core':
         specifier: workspace:*
         version: link:../../packages/core

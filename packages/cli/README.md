@@ -6,22 +6,46 @@ Command-line interface for Epok (`epok` bin).
 
 Thin ergonomics over `@epok/replay` for local workflows:
 
-- `epok replay run <interaction-ref>` — executable re-run
-- `epok replay validate <interaction-ref>` — integrity / compatibility checks
+- `epok replay run <interaction-id>` — executable re-run with a handler module
+- `epok replay validate <interaction-id>` — integrity / compatibility checks
 
-## Status
+## Usage
 
-Command paths are stubbed; wiring lands in the CLI golden-path slice.
+```bash
+epok replay validate --dir .epok-data <interaction-id>
+epok replay run --dir .epok-data --handler ./handler.js <interaction-id>
+```
+
+Options:
+
+- `--dir <path>` — filesystem Storage Provider root (default: `.epok`)
+- `--handler <path>` — required for `run`; ESM export `default`, `handler`, or `handleRequest`
+- `--report text|json` — text (default) or JSON `ReplayResult`
+- `--mode strict` / `--timing instant` — MVP defaults (other modes reserved)
+
+Exit codes: `0` pass, `1` fail/mismatch, `2` usage error.
+
+Text output examples:
+
+```text
+PASS  0190…
+      Interaction integrity and compatibility checks passed
+
+FAIL  0190…
+      no recorded dependency matches GET https://api.example/wrong-path
+      - dependency_mismatch: …  method=GET  url=https://api.example/wrong-path
+```
 
 ## Install
 
 ```bash
 pnpm add -g @epok/cli
 # or from the monorepo after build:
-pnpm --filter @epok/cli exec epok
+pnpm --filter @epok/cli exec epok replay --help
 ```
 
 ## Docs
 
+- [Quickstart](../../docs/quickstart.md)
 - [Replay spec](../../docs/05-replay-spec.md) (§10 CLI sketch)
 - Library API: [`@epok/replay`](../replay/README.md)
