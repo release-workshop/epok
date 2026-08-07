@@ -82,6 +82,10 @@ importers:
       '@epok/core':
         specifier: workspace:*
         version: link:../core
+    devDependencies:
+      '@epok/storage-memory':
+        specifier: workspace:*
+        version: link:../storage-memory
 
   packages/storage-fs:
     dependencies:

@@ -19,6 +19,9 @@
   "dependencies": {
     "@epok/core": "workspace:*"
   },
+  "devDependencies": {
+    "@epok/storage-memory": "workspace:*"
+  },
   "engines": {
     "node": ">=22"
   }

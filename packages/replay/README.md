@@ -11,9 +11,26 @@ Consumes stored **Interactions** for executable re-run and validation.
 
 Matching helpers for method + URL (+ `seq`) live in `@epok/core` and are re-exported here.
 
-## Status
+## Usage
 
-`runReplay` / `validateReplay` are typed seam stubs; implementation lands in the replay spine slice.
+```ts
+import { runReplay, validateReplay } from "@epok/replay";
+
+const validated = await validateReplay({ storage, interactionId });
+
+const result = await runReplay({
+  storage,
+  interactionId,
+  handler: async (request) => {
+    // Your app path — outbound fetch is satisfied from the Interaction.
+    const dep = await fetch("https://api.example/quote");
+    // ...
+    return new Response(/* … */);
+  },
+});
+```
+
+`ReplayResult` includes optional `timingNotes` / `signatureOutcomes` slots so later timing and signature enrichment can land without reshaping the report type.
 
 ## Install
 
