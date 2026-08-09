@@ -38,7 +38,7 @@ export function inboundRequestFromNode(req: IncomingMessage): Request {
 }
 
 export function safeObserve(
-  emit: EmitWideEvent,
+  emit: EmitWideEvent | undefined,
   interactionId: string | undefined,
   work: () => void,
 ): void {
@@ -46,7 +46,7 @@ export function safeObserve(
     work();
   } catch (err) {
     try {
-      emit({
+      emit?.({
         type: "observation_dropped",
         reason: "observer_threw",
         ...(interactionId !== undefined ? { interactionId } : {}),
@@ -62,11 +62,12 @@ export function observeInbound(
   ctx: RequestCaptureContext,
   req: IncomingMessage,
   hooks: RecorderObservationHooks | undefined,
-  emit: EmitWideEvent,
+  emit: EmitWideEvent | undefined,
 ): void {
+  if (!emit && !hooks?.onInbound) return;
   safeObserve(emit, ctx.interactionId, () => {
     const request = inboundRequestFromNode(req);
-    emit({
+    emit?.({
       type: "observed",
       phase: "inbound",
       interactionId: ctx.interactionId,
@@ -83,12 +84,13 @@ export function observeResponse(
   req: IncomingMessage,
   res: ServerResponse,
   hooks: RecorderObservationHooks | undefined,
-  emit: EmitWideEvent,
+  emit: EmitWideEvent | undefined,
 ): void {
+  if (!emit && !hooks?.onResponse) return;
   safeObserve(emit, ctx.interactionId, () => {
     const request = inboundRequestFromNode(req);
     const response = new Response(null, { status: res.statusCode });
-    emit({
+    emit?.({
       type: "observed",
       phase: "response",
       interactionId: ctx.interactionId,
@@ -106,12 +108,13 @@ export function observeDependency(
   init: RequestInit | undefined,
   response: Response | null,
   hooks: RecorderObservationHooks | undefined,
-  emit: EmitWideEvent,
+  emit: EmitWideEvent | undefined,
 ): void {
+  if (!emit && !hooks?.onDependency) return;
   safeObserve(emit, ctx?.interactionId, () => {
     const request = new Request(input, init);
     if (!ctx) {
-      emit({
+      emit?.({
         type: "context_missing",
         phase: "dependency",
         reason: "no_request_context",
@@ -121,7 +124,7 @@ export function observeDependency(
       return;
     }
 
-    emit({
+    emit?.({
       type: "observed",
       phase: "dependency",
       interactionId: ctx.interactionId,

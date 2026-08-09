@@ -1,0 +1,34 @@
+name: credibility-b-premerge
+on:
+  pull_request:
+jobs:
+  b-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.27.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Install
+        run: pnpm install --frozen-lockfile
+      - name: Build
+        run: pnpm run build
+      - name: Unit tests
+        run: pnpm test
+      - name: Credibility B gate (pre-merge)
+        run: >
+          pnpm --filter @epok/recorder credibility:b --
+          --profile premerge
+          --out "${GITHUB_WORKSPACE}/credibility-b-premerge.json"
+      - name: Upload B results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: credibility-b-premerge
+          path: credibility-b-premerge.json
+          if-no-files-found: warn

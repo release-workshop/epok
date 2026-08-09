@@ -10,6 +10,8 @@ export default tseslint.config(
       ".scratch/**",
       "eslint.config.js",
       "lint-staged.config.js",
+      // Harness scripts run via node --experimental-strip-types, not package builds.
+      "packages/*/harness/**",
     ],
   },
   eslint.configs.recommended,

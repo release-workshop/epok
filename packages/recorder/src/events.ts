@@ -32,8 +32,26 @@ export type RecorderWideEvent =
       manifestHash: string;
     }
   | {
+      type: "interaction_persisted";
+      interactionId: string;
+      manifestHash: string;
+    }
+  | {
       type: "interaction_dropped";
       reason: string;
       interactionId: string;
       cause?: string;
+    }
+  | {
+      type: "queue_depth";
+      depth: number;
+      limit: number;
+    }
+  | {
+      type: "shedding";
+      active: boolean;
+      reason?: string;
+      /** Running totals for dropped/observed ratio. */
+      observed: number;
+      dropped: number;
     };

@@ -14,7 +14,9 @@
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "stress:shed": "pnpm run build && node --expose-gc --experimental-strip-types ./harness/stress-shed.ts",
+    "credibility:b": "pnpm run build && node --experimental-strip-types ./harness/credibility-b.ts"
   },
   "dependencies": {
     "@epok/core": "workspace:*"

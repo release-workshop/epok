@@ -1,0 +1,36 @@
+name: credibility-b-postmerge
+on:
+  push:
+    branches:
+      - main
+jobs:
+  b-profile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.27.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Install
+        run: pnpm install --frozen-lockfile
+      - name: Build
+        run: pnpm run build
+      - name: Credibility B profile (post-merge, 120s)
+        run: >
+          pnpm --filter @epok/recorder credibility:b --
+          --profile postmerge
+          --out "${GITHUB_WORKSPACE}/credibility-b-postmerge.json"
+      - name: Overload / shed trust harness
+        run: pnpm --filter @epok/recorder stress:shed
+      - name: Upload post-merge results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: credibility-b-postmerge
+          path: credibility-b-postmerge.json
+          if-no-files-found: warn

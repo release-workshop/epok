@@ -1,12 +1,20 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { randomUUID } from "node:crypto";
+import {
+  createCaptureBuffers,
+  type CaptureBuffers,
+  type RequestCaptureContext,
+} from "./capture.js";
 
-export interface RequestCaptureContext {
-  interactionId: string;
-}
+export type { CaptureBuffers, RequestCaptureContext };
 
 export const requestContext = new AsyncLocalStorage<RequestCaptureContext>();
 
-export function createCaptureContext(): RequestCaptureContext {
-  return { interactionId: randomUUID() };
+export function createCaptureContext(
+  withCapture: boolean,
+): RequestCaptureContext {
+  return {
+    interactionId: randomUUID(),
+    capture: withCapture ? createCaptureBuffers() : null,
+  };
 }

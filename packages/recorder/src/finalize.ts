@@ -78,6 +78,9 @@ const DEFAULT_RECORDER: RecorderIdentity = {
   version: "0.0.0",
 };
 
+/** Shared default sanitizer — avoid per-Interaction allocation on the hot path. */
+const DEFAULT_SANITIZER: Sanitizer = createSanitizer();
+
 const DEFAULT_RUNTIME: RuntimeIdentity = {
   name: "node",
   version: process.versions.node,
@@ -354,7 +357,7 @@ export function finalizeObservation(
   capture: ObservedCapture,
   options: FinalizeObservationOptions = {},
 ): FinalizedInteraction | null {
-  const sanitizer = options.sanitizer ?? createSanitizer();
+  const sanitizer = options.sanitizer ?? DEFAULT_SANITIZER;
   const acc: ObjectAccumulator = {
     objects: {},
     externalObjects: {},
