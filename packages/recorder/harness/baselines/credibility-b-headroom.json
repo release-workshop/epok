@@ -1,0 +1,921 @@
+{
+  "type": "credibility_b_report",
+  "profile": "premerge",
+  "warmupMs": 10000,
+  "measureMs": 30000,
+  "trialsPerCell": 3,
+  "minSamples": 10000,
+  "thresholds": {
+    "B": {
+      "maxP50Increase": 0.2,
+      "maxP99Increase": 0.4,
+      "minThroughputRatio": 0.8,
+      "minSamples": 10000
+    },
+    "A": {
+      "maxP50Increase": 0.1,
+      "maxP99Increase": 0.2,
+      "minThroughputRatio": 0.9,
+      "minSamples": 10000
+    }
+  },
+  "durationMs": 973230,
+  "cells": [
+    {
+      "scenario": "S1",
+      "dependencyDelayMs": 1.5,
+      "concurrency": 50,
+      "trials": [
+        {
+          "trial": 1,
+          "baseline": {
+            "mode": "disabled",
+            "metrics": {
+              "p50Ms": 3.13770900000236,
+              "p99Ms": 7.14220899999782,
+              "throughputRps": 13654.998591986678,
+              "samples": 409668
+            },
+            "errors": 0
+          },
+          "enabled": {
+            "mode": "enabled",
+            "metrics": {
+              "p50Ms": 4.039707999996608,
+              "p99Ms": 8.249750000002678,
+              "throughputRps": 11431.48063068918,
+              "samples": 342973
+            },
+            "errors": 0
+          },
+          "b": {
+            "ok": false,
+            "failures": ["p50 increase 28.7% > 20%"],
+            "p50Increase": 0.28747057167939083,
+            "p99Increase": 0.15506981103538078,
+            "throughputRatio": 0.837164541151813,
+            "baseline": {
+              "p50Ms": 3.13770900000236,
+              "p99Ms": 7.14220899999782,
+              "throughputRps": 13654.998591986678,
+              "samples": 409668
+            },
+            "enabled": {
+              "p50Ms": 4.039707999996608,
+              "p99Ms": 8.249750000002678,
+              "throughputRps": 11431.48063068918,
+              "samples": 342973
+            },
+            "bar": "B"
+          },
+          "a": {
+            "ok": false,
+            "failures": [
+              "p50 increase 28.7% > 10%",
+              "throughput ratio 0.837 < 0.90"
+            ],
+            "p50Increase": 0.28747057167939083,
+            "p99Increase": 0.15506981103538078,
+            "throughputRatio": 0.837164541151813,
+            "baseline": {
+              "p50Ms": 3.13770900000236,
+              "p99Ms": 7.14220899999782,
+              "throughputRps": 13654.998591986678,
+              "samples": 409668
+            },
+            "enabled": {
+              "p50Ms": 4.039707999996608,
+              "p99Ms": 8.249750000002678,
+              "throughputRps": 11431.48063068918,
+              "samples": 342973
+            },
+            "bar": "A"
+          }
+        },
+        {
+          "trial": 2,
+          "baseline": {
+            "mode": "disabled",
+            "metrics": {
+              "p50Ms": 4.260707999987062,
+              "p99Ms": 7.914124999995693,
+              "throughputRps": 11962.706613287286,
+              "samples": 358928
+            },
+            "errors": 0
+          },
+          "enabled": {
+            "mode": "enabled",
+            "metrics": {
+              "p50Ms": 4.048249999992549,
+              "p99Ms": 8.50137499999255,
+              "throughputRps": 11166.32506610439,
+              "samples": 335043
+            },
+            "errors": 0
+          },
+          "b": {
+            "ok": true,
+            "failures": [],
+            "p50Increase": -0.049864482615367633,
+            "p99Increase": 0.0742027703627598,
+            "throughputRatio": 0.9334279797267339,
+            "baseline": {
+              "p50Ms": 4.260707999987062,
+              "p99Ms": 7.914124999995693,
+              "throughputRps": 11962.706613287286,
+              "samples": 358928
+            },
+            "enabled": {
+              "p50Ms": 4.048249999992549,
+              "p99Ms": 8.50137499999255,
+              "throughputRps": 11166.32506610439,
+              "samples": 335043
+            },
+            "bar": "B"
+          },
+          "a": {
+            "ok": true,
+            "failures": [],
+            "p50Increase": -0.049864482615367633,
+            "p99Increase": 0.0742027703627598,
+            "throughputRatio": 0.9334279797267339,
+            "baseline": {
+              "p50Ms": 4.260707999987062,
+              "p99Ms": 7.914124999995693,
+              "throughputRps": 11962.706613287286,
+              "samples": 358928
+            },
+            "enabled": {
+              "p50Ms": 4.048249999992549,
+              "p99Ms": 8.50137499999255,
+              "throughputRps": 11166.32506610439,
+              "samples": 335043
+            },
+            "bar": "A"
+          }
+        },
+        {
+          "trial": 3,
+          "baseline": {
+            "mode": "disabled",
+            "metrics": {
+              "p50Ms": 4.307207999983802,
+              "p99Ms": 8.30145800000173,
+              "throughputRps": 11623.491990889843,
+              "samples": 348724
+            },
+            "errors": 0
+          },
+          "enabled": {
+            "mode": "enabled",
+            "metrics": {
+              "p50Ms": 4.0353330000070855,
+              "p99Ms": 8.316083999990951,
+              "throughputRps": 11352.21587547079,
+              "samples": 340597
+            },
+            "errors": 0
+          },
+          "b": {
+            "ok": true,
+            "failures": [],
+            "p50Increase": -0.06312093587719454,
+            "p99Increase": 0.001761859180546095,
+            "throughputRatio": 0.9766613926665351,
+            "baseline": {
+              "p50Ms": 4.307207999983802,
+              "p99Ms": 8.30145800000173,
+              "throughputRps": 11623.491990889843,
+              "samples": 348724
+            },
+            "enabled": {
+              "p50Ms": 4.0353330000070855,
+              "p99Ms": 8.316083999990951,
+              "throughputRps": 11352.21587547079,
+              "samples": 340597
+            },
+            "bar": "B"
+          },
+          "a": {
+            "ok": true,
+            "failures": [],
+            "p50Increase": -0.06312093587719454,
+            "p99Increase": 0.001761859180546095,
+            "throughputRatio": 0.9766613926665351,
+            "baseline": {
+              "p50Ms": 4.307207999983802,
+              "p99Ms": 8.30145800000173,
+              "throughputRps": 11623.491990889843,
+              "samples": 348724
+            },
+            "enabled": {
+              "p50Ms": 4.0353330000070855,
+              "p99Ms": 8.316083999990951,
+              "throughputRps": 11352.21587547079,
+              "samples": 340597
+            },
+            "bar": "A"
+          }
+        }
+      ],
+      "bVariance": {
+        "ok": true,
+        "passes": 2,
+        "trials": 3
+      },
+      "aVariance": {
+        "ok": true,
+        "passes": 2,
+        "trials": 3
+      }
+    },
+    {
+      "scenario": "S1",
+      "dependencyDelayMs": 1.5,
+      "concurrency": 100,
+      "trials": [
+        {
+          "trial": 1,
+          "baseline": {
+            "mode": "disabled",
+            "metrics": {
+              "p50Ms": 6.723583999963012,
+              "p99Ms": 12.19408399995882,
+              "throughputRps": 13536.819467862626,
+              "samples": 406200
+            },
+            "errors": 0
+          },
+          "enabled": {
+            "mode": "enabled",
+            "metrics": {
+              "p50Ms": 7.28266700002132,
+              "p99Ms": 12.673666999966372,
+              "throughputRps": 12277.77904390829,
+              "samples": 368422
+            },
+            "errors": 0
+          },
+          "b": {
+            "ok": true,
+            "failures": [],
+            "p50Increase": 0.08315252699473732,
+            "p99Increase": 0.03932915338365479,
+            "throughputRatio": 0.90699141501123,
+            "baseline": {
+              "p50Ms": 6.723583999963012,
+              "p99Ms": 12.19408399995882,
+              "throughputRps": 13536.819467862626,
+              "samples": 406200
+            },
+            "enabled": {
+              "p50Ms": 7.28266700002132,
+              "p99Ms": 12.673666999966372,
+              "throughputRps": 12277.77904390829,
+              "samples": 368422
+            },
+            "bar": "B"
+          },
+          "a": {
+            "ok": true,
+            "failures": [],
+            "p50Increase": 0.08315252699473732,
+            "p99Increase": 0.03932915338365479,
+            "throughputRatio": 0.90699141501123,
+            "baseline": {
+              "p50Ms": 6.723583999963012,
+              "p99Ms": 12.19408399995882,
+              "throughputRps": 13536.819467862626,
+              "samples": 406200
+            },
+            "enabled": {
+              "p50Ms": 7.28266700002132,
+              "p99Ms": 12.673666999966372,
+              "throughputRps": 12277.77904390829,
+              "samples": 368422
+            },
+            "bar": "A"
+          }
+        },
+        {
+          "trial": 2,
+          "baseline": {
+            "mode": "disabled",
+            "metrics": {
+              "p50Ms": 6.7076250000391155,
+              "p99Ms": 12.05704099999275,
+              "throughputRps": 13574.13358609673,
+              "samples": 407303
+            },
+            "errors": 0
+          },
+          "enabled": {
+            "mode": "enabled",
+            "metrics": {
+              "p50Ms": 7.268250000022817,
+              "p99Ms": 12.595833000028506,
+              "throughputRps": 12279.29285547658,
+              "samples": 368438
+            },
+            "errors": 0
+          },
+          "b": {
+            "ok": true,
+            "failures": [],
+            "p50Increase": 0.08358025381270309,
+            "p99Increase": 0.04468691779650408,
+            "throughputRatio": 0.9046096959038044,
+            "baseline": {
+              "p50Ms": 6.7076250000391155,
+              "p99Ms": 12.05704099999275,
+              "throughputRps": 13574.13358609673,
+              "samples": 407303
+            },
+            "enabled": {
+              "p50Ms": 7.268250000022817,
+              "p99Ms": 12.595833000028506,
+              "throughputRps": 12279.29285547658,
+              "samples": 368438
+            },
+            "bar": "B"
+          },
+          "a": {
+            "ok": true,
+            "failures": [],
+            "p50Increase": 0.08358025381270309,
+            "p99Increase": 0.04468691779650408,
+            "throughputRatio": 0.9046096959038044,
+            "baseline": {
+              "p50Ms": 6.7076250000391155,
+              "p99Ms": 12.05704099999275,
+              "throughputRps": 13574.13358609673,
+              "samples": 407303
+            },
+            "enabled": {
+              "p50Ms": 7.268250000022817,
+              "p99Ms": 12.595833000028506,
+              "throughputRps": 12279.29285547658,
+              "samples": 368438
+            },
+            "bar": "A"
+          }
+        },
+        {
+          "trial": 3,
+          "baseline": {
+            "mode": "disabled",
+            "metrics": {
+              "p50Ms": 6.702708000026178,
+              "p99Ms": 12.049333000031766,
+              "throughputRps": 13523.244575465023,
+              "samples": 405767
+            },
+            "errors": 0
+          },
+          "enabled": {
+            "mode": "enabled",
+            "metrics": {
+              "p50Ms": 7.272083999996539,
+              "p99Ms": 12.5575410000165,
+              "throughputRps": 12290.068195329955,
+              "samples": 368773
+            },
+            "errors": 0
+          },
+          "b": {
+            "ok": true,
+            "failures": [],
+            "p50Increase": 0.08494715866604033,
+            "p99Increase": 0.042177272383740576,
+            "throughputRatio": 0.9088106132183398,
+            "baseline": {
+              "p50Ms": 6.702708000026178,
+              "p99Ms": 12.049333000031766,
+              "throughputRps": 13523.244575465023,
+              "samples": 405767
+            },
+            "enabled": {
+              "p50Ms": 7.272083999996539,
+              "p99Ms": 12.5575410000165,
+              "throughputRps": 12290.068195329955,
+              "samples": 368773
+            },
+            "bar": "B"
+          },
+          "a": {
+            "ok": true,
+            "failures": [],
+            "p50Increase": 0.08494715866604033,
+            "p99Increase": 0.042177272383740576,
+            "throughputRatio": 0.9088106132183398,
+            "baseline": {
+              "p50Ms": 6.702708000026178,
+              "p99Ms": 12.049333000031766,
+              "throughputRps": 13523.244575465023,
+              "samples": 405767
+            },
+            "enabled": {
+              "p50Ms": 7.272083999996539,
+              "p99Ms": 12.5575410000165,
+              "throughputRps": 12290.068195329955,
+              "samples": 368773
+            },
+            "bar": "A"
+          }
+        }
+      ],
+      "bVariance": {
+        "ok": true,
+        "passes": 3,
+        "trials": 3
+      },
+      "aVariance": {
+        "ok": true,
+        "passes": 3,
+        "trials": 3
+      }
+    },
+    {
+      "scenario": "S2",
+      "dependencyDelayMs": 10,
+      "concurrency": 50,
+      "trials": [
+        {
+          "trial": 1,
+          "baseline": {
+            "mode": "disabled",
+            "metrics": {
+              "p50Ms": 16.080750000022817,
+              "p99Ms": 20.489792000036687,
+              "throughputRps": 3088.1937037197913,
+              "samples": 92678
+            },
+            "errors": 0
+          },
+          "enabled": {
+            "mode": "enabled",
+            "metrics": {
+              "p50Ms": 16.57991700002458,
+              "p99Ms": 19.23908400000073,
+              "throughputRps": 3047.603054075444,
+              "samples": 91465
+            },
+            "errors": 0
+          },
+          "b": {
+            "ok": true,
+            "failures": [],
+            "p50Increase": 0.031041276059950797,
+            "p99Increase": -0.06104054155521526,
+            "throughputRatio": 0.9868561840549526,
+            "baseline": {
+              "p50Ms": 16.080750000022817,
+              "p99Ms": 20.489792000036687,
+              "throughputRps": 3088.1937037197913,
+              "samples": 92678
+            },
+            "enabled": {
+              "p50Ms": 16.57991700002458,
+              "p99Ms": 19.23908400000073,
+              "throughputRps": 3047.603054075444,
+              "samples": 91465
+            },
+            "bar": "B"
+          },
+          "a": {
+            "ok": true,
+            "failures": [],
+            "p50Increase": 0.031041276059950797,
+            "p99Increase": -0.06104054155521526,
+            "throughputRatio": 0.9868561840549526,
+            "baseline": {
+              "p50Ms": 16.080750000022817,
+              "p99Ms": 20.489792000036687,
+              "throughputRps": 3088.1937037197913,
+              "samples": 92678
+            },
+            "enabled": {
+              "p50Ms": 16.57991700002458,
+              "p99Ms": 19.23908400000073,
+              "throughputRps": 3047.603054075444,
+              "samples": 91465
+            },
+            "bar": "A"
+          }
+        },
+        {
+          "trial": 2,
+          "baseline": {
+            "mode": "disabled",
+            "metrics": {
+              "p50Ms": 17.01670799998101,
+              "p99Ms": 20.950291000073776,
+              "throughputRps": 2953.8917552201597,
+              "samples": 88638
+            },
+            "errors": 0
+          },
+          "enabled": {
+            "mode": "enabled",
+            "metrics": {
+              "p50Ms": 16.575458000064828,
+              "p99Ms": 19.491540999966674,
+              "throughputRps": 3036.8180118684795,
+              "samples": 91152
+            },
+            "errors": 0
+          },
+          "b": {
+            "ok": true,
+            "failures": [],
+            "p50Increase": -0.02593039734340352,
+            "p99Increase": -0.0696291044406956,
+            "throughputRatio": 1.0280735597375128,
+            "baseline": {
+              "p50Ms": 17.01670799998101,
+              "p99Ms": 20.950291000073776,
+              "throughputRps": 2953.8917552201597,
+              "samples": 88638
+            },
+            "enabled": {
+              "p50Ms": 16.575458000064828,
+              "p99Ms": 19.491540999966674,
+              "throughputRps": 3036.8180118684795,
+              "samples": 91152
+            },
+            "bar": "B"
+          },
+          "a": {
+            "ok": true,
+            "failures": [],
+            "p50Increase": -0.02593039734340352,
+            "p99Increase": -0.0696291044406956,
+            "throughputRatio": 1.0280735597375128,
+            "baseline": {
+              "p50Ms": 17.01670799998101,
+              "p99Ms": 20.950291000073776,
+              "throughputRps": 2953.8917552201597,
+              "samples": 88638
+            },
+            "enabled": {
+              "p50Ms": 16.575458000064828,
+              "p99Ms": 19.491540999966674,
+              "throughputRps": 3036.8180118684795,
+              "samples": 91152
+            },
+            "bar": "A"
+          }
+        },
+        {
+          "trial": 3,
+          "baseline": {
+            "mode": "disabled",
+            "metrics": {
+              "p50Ms": 17.00916600006167,
+              "p99Ms": 21.057832999969833,
+              "throughputRps": 2953.0537728014547,
+              "samples": 88599
+            },
+            "errors": 0
+          },
+          "enabled": {
+            "mode": "enabled",
+            "metrics": {
+              "p50Ms": 16.538832999998704,
+              "p99Ms": 19.34362499997951,
+              "throughputRps": 3048.8620040096293,
+              "samples": 91495
+            },
+            "errors": 0
+          },
+          "b": {
+            "ok": true,
+            "failures": [],
+            "p50Increase": -0.02765173789598265,
+            "p99Increase": -0.0814047675272559,
+            "throughputRatio": 1.0324437814477334,
+            "baseline": {
+              "p50Ms": 17.00916600006167,
+              "p99Ms": 21.057832999969833,
+              "throughputRps": 2953.0537728014547,
+              "samples": 88599
+            },
+            "enabled": {
+              "p50Ms": 16.538832999998704,
+              "p99Ms": 19.34362499997951,
+              "throughputRps": 3048.8620040096293,
+              "samples": 91495
+            },
+            "bar": "B"
+          },
+          "a": {
+            "ok": true,
+            "failures": [],
+            "p50Increase": -0.02765173789598265,
+            "p99Increase": -0.0814047675272559,
+            "throughputRatio": 1.0324437814477334,
+            "baseline": {
+              "p50Ms": 17.00916600006167,
+              "p99Ms": 21.057832999969833,
+              "throughputRps": 2953.0537728014547,
+              "samples": 88599
+            },
+            "enabled": {
+              "p50Ms": 16.538832999998704,
+              "p99Ms": 19.34362499997951,
+              "throughputRps": 3048.8620040096293,
+              "samples": 91495
+            },
+            "bar": "A"
+          }
+        }
+      ],
+      "bVariance": {
+        "ok": true,
+        "passes": 3,
+        "trials": 3
+      },
+      "aVariance": {
+        "ok": true,
+        "passes": 3,
+        "trials": 3
+      }
+    },
+    {
+      "scenario": "S2",
+      "dependencyDelayMs": 10,
+      "concurrency": 100,
+      "trials": [
+        {
+          "trial": 1,
+          "baseline": {
+            "mode": "disabled",
+            "metrics": {
+              "p50Ms": 19.75091699999757,
+              "p99Ms": 23.638916000025347,
+              "throughputRps": 4949.517249863444,
+              "samples": 148572
+            },
+            "errors": 0
+          },
+          "enabled": {
+            "mode": "enabled",
+            "metrics": {
+              "p50Ms": 18.538957999902777,
+              "p99Ms": 23.469875000067987,
+              "throughputRps": 5464.893963877048,
+              "samples": 164002
+            },
+            "errors": 0
+          },
+          "b": {
+            "ok": true,
+            "failures": [],
+            "p50Increase": -0.0613621635944773,
+            "p99Increase": -0.0071509624196464455,
+            "throughputRatio": 1.1041266628634991,
+            "baseline": {
+              "p50Ms": 19.75091699999757,
+              "p99Ms": 23.638916000025347,
+              "throughputRps": 4949.517249863444,
+              "samples": 148572
+            },
+            "enabled": {
+              "p50Ms": 18.538957999902777,
+              "p99Ms": 23.469875000067987,
+              "throughputRps": 5464.893963877048,
+              "samples": 164002
+            },
+            "bar": "B"
+          },
+          "a": {
+            "ok": true,
+            "failures": [],
+            "p50Increase": -0.0613621635944773,
+            "p99Increase": -0.0071509624196464455,
+            "throughputRatio": 1.1041266628634991,
+            "baseline": {
+              "p50Ms": 19.75091699999757,
+              "p99Ms": 23.638916000025347,
+              "throughputRps": 4949.517249863444,
+              "samples": 148572
+            },
+            "enabled": {
+              "p50Ms": 18.538957999902777,
+              "p99Ms": 23.469875000067987,
+              "throughputRps": 5464.893963877048,
+              "samples": 164002
+            },
+            "bar": "A"
+          }
+        },
+        {
+          "trial": 2,
+          "baseline": {
+            "mode": "disabled",
+            "metrics": {
+              "p50Ms": 19.820208000019193,
+              "p99Ms": 24.168708000099286,
+              "throughputRps": 4946.760765347711,
+              "samples": 148491
+            },
+            "errors": 0
+          },
+          "enabled": {
+            "mode": "enabled",
+            "metrics": {
+              "p50Ms": 18.37695900001563,
+              "p99Ms": 25.88462500006426,
+              "throughputRps": 5525.969200236463,
+              "samples": 165803
+            },
+            "errors": 0
+          },
+          "b": {
+            "ok": true,
+            "failures": [],
+            "p50Increase": -0.07281704611788957,
+            "p99Increase": 0.0709974649848029,
+            "throughputRatio": 1.117088426621747,
+            "baseline": {
+              "p50Ms": 19.820208000019193,
+              "p99Ms": 24.168708000099286,
+              "throughputRps": 4946.760765347711,
+              "samples": 148491
+            },
+            "enabled": {
+              "p50Ms": 18.37695900001563,
+              "p99Ms": 25.88462500006426,
+              "throughputRps": 5525.969200236463,
+              "samples": 165803
+            },
+            "bar": "B"
+          },
+          "a": {
+            "ok": true,
+            "failures": [],
+            "p50Increase": -0.07281704611788957,
+            "p99Increase": 0.0709974649848029,
+            "throughputRatio": 1.117088426621747,
+            "baseline": {
+              "p50Ms": 19.820208000019193,
+              "p99Ms": 24.168708000099286,
+              "throughputRps": 4946.760765347711,
+              "samples": 148491
+            },
+            "enabled": {
+              "p50Ms": 18.37695900001563,
+              "p99Ms": 25.88462500006426,
+              "throughputRps": 5525.969200236463,
+              "samples": 165803
+            },
+            "bar": "A"
+          }
+        },
+        {
+          "trial": 3,
+          "baseline": {
+            "mode": "disabled",
+            "metrics": {
+              "p50Ms": 19.885207999963313,
+              "p99Ms": 24.015458000008948,
+              "throughputRps": 4935.783283478579,
+              "samples": 148164
+            },
+            "errors": 0
+          },
+          "enabled": {
+            "mode": "enabled",
+            "metrics": {
+              "p50Ms": 18.01783299993258,
+              "p99Ms": 29.251958000008017,
+              "throughputRps": 5600.06175631991,
+              "samples": 168030
+            },
+            "errors": 0
+          },
+          "b": {
+            "ok": true,
+            "failures": [],
+            "p50Increase": -0.09390774288275883,
+            "p99Increase": 0.21804705952295883,
+            "throughputRatio": 1.1345842057257365,
+            "baseline": {
+              "p50Ms": 19.885207999963313,
+              "p99Ms": 24.015458000008948,
+              "throughputRps": 4935.783283478579,
+              "samples": 148164
+            },
+            "enabled": {
+              "p50Ms": 18.01783299993258,
+              "p99Ms": 29.251958000008017,
+              "throughputRps": 5600.06175631991,
+              "samples": 168030
+            },
+            "bar": "B"
+          },
+          "a": {
+            "ok": false,
+            "failures": ["p99 increase 21.8% > 20%"],
+            "p50Increase": -0.09390774288275883,
+            "p99Increase": 0.21804705952295883,
+            "throughputRatio": 1.1345842057257365,
+            "baseline": {
+              "p50Ms": 19.885207999963313,
+              "p99Ms": 24.015458000008948,
+              "throughputRps": 4935.783283478579,
+              "samples": 148164
+            },
+            "enabled": {
+              "p50Ms": 18.01783299993258,
+              "p99Ms": 29.251958000008017,
+              "throughputRps": 5600.06175631991,
+              "samples": 168030
+            },
+            "bar": "A"
+          }
+        }
+      ],
+      "bVariance": {
+        "ok": true,
+        "passes": 3,
+        "trials": 3
+      },
+      "aVariance": {
+        "ok": true,
+        "passes": 2,
+        "trials": 3
+      }
+    }
+  ],
+  "bGate": {
+    "ok": true,
+    "blocking": true,
+    "cells": [
+      {
+        "scenario": "S1",
+        "concurrency": 50,
+        "ok": true,
+        "passes": 2,
+        "trials": 3
+      },
+      {
+        "scenario": "S1",
+        "concurrency": 100,
+        "ok": true,
+        "passes": 3,
+        "trials": 3
+      },
+      {
+        "scenario": "S2",
+        "concurrency": 50,
+        "ok": true,
+        "passes": 3,
+        "trials": 3
+      },
+      {
+        "scenario": "S2",
+        "concurrency": 100,
+        "ok": true,
+        "passes": 3,
+        "trials": 3
+      }
+    ]
+  },
+  "aReport": {
+    "ok": true,
+    "blocking": false,
+    "note": "A bar is reported for later promotion; does not fail this gate",
+    "cells": [
+      {
+        "scenario": "S1",
+        "concurrency": 50,
+        "ok": true,
+        "passes": 2,
+        "trials": 3
+      },
+      {
+        "scenario": "S1",
+        "concurrency": 100,
+        "ok": true,
+        "passes": 3,
+        "trials": 3
+      },
+      {
+        "scenario": "S2",
+        "concurrency": 50,
+        "ok": true,
+        "passes": 3,
+        "trials": 3
+      },
+      {
+        "scenario": "S2",
+        "concurrency": 100,
+        "ok": true,
+        "passes": 2,
+        "trials": 3
+      }
+    ]
+  }
+}

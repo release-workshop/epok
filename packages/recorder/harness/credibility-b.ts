@@ -11,13 +11,16 @@
  *
  * Run:
  *   pnpm --filter @epok/recorder credibility:b -- --profile premerge --out results.json
+ * Compare to frozen headroom baseline:
+ *   pnpm --filter @epok/recorder credibility:b -- --compare harness/baselines/credibility-b-headroom.json results.json
  */
 import { createServer, type Server } from "node:http";
-import { writeFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import type { StorageProvider } from "@epok/core";
 import {
   A_BAR,
   B_BAR,
+  compareCredibilityReports,
   evaluateOverheadCell,
   evaluateVariance,
   summarizeLatencies,
@@ -377,7 +380,15 @@ async function main(): Promise<void> {
   --measure-ms N       override profile measure window
   --min-samples N      override sample validity gate (default 10000)
   --concurrency a,b    default 50,100
-  --scenarios S1,S2    default S1,S2`);
+  --scenarios S1,S2    default S1,S2
+
+Compare a new report to a frozen headroom baseline (no load run):
+  credibility-b --compare <baseline.json> <candidate.json> [--out compare.json]`);
+    return;
+  }
+
+  if (hasFlag(argv, "--compare")) {
+    await runCompare(argv);
     return;
   }
 
@@ -456,6 +467,40 @@ async function main(): Promise<void> {
     return;
   }
   console.error("PASS: B gate");
+}
+
+async function loadReport(path: string): Promise<unknown> {
+  return JSON.parse(await readFile(path, "utf8")) as unknown;
+}
+
+async function runCompare(argv: string[]): Promise<void> {
+  const idx = argv.indexOf("--compare");
+  const baselinePath = argv[idx + 1];
+  const candidatePath = argv[idx + 2];
+  if (!baselinePath || !candidatePath || baselinePath.startsWith("--")) {
+    throw new Error(
+      "usage: credibility-b --compare <baseline.json> <candidate.json> [--out compare.json]",
+    );
+  }
+  const outPath = flag(argv, "--out");
+  const compare = compareCredibilityReports(
+    await loadReport(baselinePath),
+    await loadReport(candidatePath),
+  );
+  const json = JSON.stringify(compare, null, 2);
+  console.log(json);
+  if (outPath) {
+    await writeFile(outPath, `${json}\n`, "utf8");
+    console.error(`wrote ${outPath}`);
+  }
+  if (!compare.matched) {
+    console.error("FAIL: credibility compare (cell set or protocol metadata)");
+    process.exitCode = 1;
+    return;
+  }
+  console.error(
+    "PASS: credibility compare (cells + protocol metadata matched; see cells[].protocol for B/A variance)",
+  );
 }
 
 await main();

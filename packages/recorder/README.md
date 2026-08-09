@@ -47,6 +47,22 @@ pnpm --filter @epok/recorder credibility:b -- --profile postmerge --out credibil
 
 Machine-readable JSON includes per-cell trials, B gate (blocking), and A report (non-blocking until promotion).
 
+### Headroom baseline + before/after compare
+
+Frozen premerge headroom benchmark: `harness/baselines/credibility-b-headroom.json` (S1/S2 × `[50,100]`, 10s warmup / 30s measure, 3 trials). Later headroom issues must attach machine-readable before/after compare evidence against this file — do not argue from vibes.
+
+```bash
+# Re-run the same premerge profile
+pnpm --filter @epok/recorder credibility:b -- --profile premerge --out credibility-b-after.json
+
+# Cell-by-cell deltas (median trial B/A p50/p99/throughput) + protocol pass/fail
+pnpm --filter @epok/recorder credibility:b -- \
+  --compare harness/baselines/credibility-b-headroom.json credibility-b-after.json \
+  --out credibility-b-compare.json
+```
+
+Compare output type is `credibility_b_compare`. `matched` means cell set + protocol metadata (`profile` / warmup / measure / trials) align — not B/A variance success. Cite `cells[].deltas` (candidate − baseline for p50/p99 increases and throughput ratio) and `cells[].protocol` (`candidateOk` / `candidatePasses` / `candidateTrials`). Negative `deltas.b.p50Increase` / `p99Increase` and positive `deltas.b.throughputRatio` mean improvement vs the frozen baseline. Thresholds are unchanged; A remains non-blocking.
+
 ## Install
 
 ```bash
