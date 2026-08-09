@@ -85,6 +85,33 @@ export function nodeRequestUrl(req: IncomingMessage): string {
   return `http://${host}${path}`;
 }
 
+/**
+ * True when inbound body capture is worth installing: framed non-empty body
+ * (Content-Length > 0 or Transfer-Encoding), or a method that commonly carries
+ * a body even when framing headers are incomplete.
+ */
+export function expectsInboundBody(req: IncomingMessage): boolean {
+  if (hasFramedInboundBody(req)) return true;
+  const method = (req.method ?? "GET").toUpperCase();
+  return method === "POST" || method === "PUT" || method === "PATCH";
+}
+
+function hasFramedInboundBody(req: IncomingMessage): boolean {
+  const transferEncoding = headerValue(req.headers["transfer-encoding"]);
+  if (transferEncoding !== undefined && transferEncoding.length > 0) {
+    return true;
+  }
+  const contentLength = headerValue(req.headers["content-length"]);
+  if (contentLength === undefined || contentLength === "") return false;
+  const length = Number(contentLength);
+  return Number.isFinite(length) && length > 0;
+}
+
+function headerValue(value: string | string[] | undefined): string | undefined {
+  if (value === undefined) return undefined;
+  return Array.isArray(value) ? value[0] : value;
+}
+
 export function markDropped(buf: CaptureBuffers, reason: string): void {
   buf.dropped = true;
   buf.dropReason = reason;

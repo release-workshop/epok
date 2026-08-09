@@ -3,6 +3,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import type { RecorderObservationHooks, StorageProvider } from "@epok/core";
 import {
   buildObservedCapture,
+  expectsInboundBody,
   installInboundBodyCapture,
   installResponseCapture,
   releaseCaptureBytes,
@@ -85,7 +86,9 @@ export function installInboundAttach(deps: InboundAttachDeps): () => void {
           return Reflect.apply(originalEmit, this, [event, ...args]) as boolean;
         }
         try {
-          installInboundBodyCapture(req, buf, pressure);
+          if (expectsInboundBody(req)) {
+            installInboundBodyCapture(req, buf, pressure);
+          }
           installResponseCapture(res, buf, pressure);
         } catch {
           // Fail-open.
