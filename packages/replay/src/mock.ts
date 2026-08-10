@@ -66,13 +66,6 @@ function unsupportedModes(
   timing: ReplayTimingMode,
   mode: ReplayMismatchMode,
 ): (ReplayResult & { ok: false; playback: "snapshot" }) | undefined {
-  if (timing !== "instant") {
-    return failure(interactionId, `unsupported timing mode: ${timing}`, {
-      timing: "instant",
-      mode,
-      playback: "snapshot",
-    });
-  }
   if (mode !== "strict") {
     return failure(interactionId, `unsupported mismatch mode: ${mode}`, {
       timing,
@@ -86,6 +79,7 @@ function unsupportedModes(
 /**
  * Snapshot/mock playback: materialize inbound/response fixtures and serve
  * recorded dependency responses without executable re-drive of the app path.
+ * Timing applies when `installFetch()` injects dependencies.
  */
 export async function mockReplay(
   options: MockReplayOptions,
@@ -126,6 +120,7 @@ export async function mockReplay(
         storage: options.storage,
         manifest,
         matching: "snapshot",
+        timing,
       }),
   };
 }

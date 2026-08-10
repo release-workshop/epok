@@ -86,16 +86,12 @@ function failure(
   return result;
 }
 
-function unsupportedTiming(
-  interactionId: string,
-  timing: ReplayTimingMode,
-  mode: ReplayMismatchMode,
-): ReplayResult | undefined {
-  if (timing === "instant") return undefined;
-  return failure(interactionId, `unsupported timing mode: ${timing}`, {
-    timing: "instant",
-    mode,
-  });
+function withTimingNotes(
+  result: ReplayResult,
+  timingNotes: string[],
+): ReplayResult {
+  if (timingNotes.length === 0) return result;
+  return { ...result, timingNotes };
 }
 
 function firstMismatchMessage(
@@ -115,36 +111,42 @@ function handlerFailure(
   },
 ): ReplayResult {
   const mismatches = injection.takeMismatches();
+  const timingNotes = injection.takeTimingNotes();
   const errMessage =
     err instanceof Error ? err.message : "handler threw during replay";
 
   if (injection.hadHardMismatch() && mismatches.length > 0) {
-    return failure(
-      ctx.manifestId,
-      firstMismatchMessage(mismatches, errMessage),
-      {
+    return withTimingNotes(
+      failure(ctx.manifestId, firstMismatchMessage(mismatches, errMessage), {
         timing: ctx.timing,
         mode: ctx.mode,
         mismatches,
-      },
+      }),
+      timingNotes,
     );
   }
 
   if (mismatches.length > 0) {
-    return failure(ctx.manifestId, errMessage, {
-      timing: ctx.timing,
-      mode: ctx.mode,
-      mismatches: [
-        ...mismatches,
-        { code: "handler_error", message: errMessage },
-      ],
-    });
+    return withTimingNotes(
+      failure(ctx.manifestId, errMessage, {
+        timing: ctx.timing,
+        mode: ctx.mode,
+        mismatches: [
+          ...mismatches,
+          { code: "handler_error", message: errMessage },
+        ],
+      }),
+      timingNotes,
+    );
   }
 
-  return failure(ctx.manifestId, errMessage, {
-    timing: ctx.timing,
-    mode: ctx.mode,
-  });
+  return withTimingNotes(
+    failure(ctx.manifestId, errMessage, {
+      timing: ctx.timing,
+      mode: ctx.mode,
+    }),
+    timingNotes,
+  );
 }
 
 async function compareToRecorded(
@@ -213,14 +215,13 @@ async function compareToRecorded(
  * responses, and compare the app response.
  * Defaults: strict match, instant timing. `diagnostic-lenient` continues after
  * safe soft mismatches and never labels a run with deviations as success.
+ * `realtime` paces dependency completion from recorded timings (RFC §6).
  */
 export async function runReplay(
   options: ReplayRunOptions,
 ): Promise<ReplayResult> {
   const timing: ReplayTimingMode = options.timing ?? "instant";
   const mode: ReplayMismatchMode = options.mode ?? "strict";
-  const unsupported = unsupportedTiming(options.interactionId, timing, mode);
-  if (unsupported) return unsupported;
 
   const manifest = await loadManifest(options.storage, options.interactionId);
   const versionError = unsupportedSpecVersionMessage(manifest.specVersion);
@@ -233,6 +234,7 @@ export async function runReplay(
     storage: options.storage,
     manifest,
     matching: mode,
+    timing,
   });
 
   try {
@@ -248,23 +250,33 @@ export async function runReplay(
     }
 
     const priorMismatches = injection.takeMismatches();
+    const timingNotes = injection.takeTimingNotes();
     if (injection.hadHardMismatch()) {
-      return failure(
-        manifest.id,
-        firstMismatchMessage(priorMismatches, "dependency mismatch"),
-        {
-          timing,
-          mode,
-          mismatches: priorMismatches,
-        },
+      return withTimingNotes(
+        failure(
+          manifest.id,
+          firstMismatchMessage(priorMismatches, "dependency mismatch"),
+          {
+            timing,
+            mode,
+            mismatches: priorMismatches,
+          },
+        ),
+        timingNotes,
       );
     }
 
-    return await compareToRecorded(options.storage, manifest, response, {
-      timing,
-      mode,
-      priorMismatches,
-    });
+    const compared = await compareToRecorded(
+      options.storage,
+      manifest,
+      response,
+      {
+        timing,
+        mode,
+        priorMismatches,
+      },
+    );
+    return withTimingNotes(compared, timingNotes);
   } finally {
     injection.restore();
   }

@@ -1,5 +1,6 @@
 /**
- * Timing modes. MVP implements `instant` only; `realtime` is reserved.
+ * Timing modes. `instant` (default) resolves as soon as matching succeeds;
+ * `realtime` paces dependency completion from recorded timings (RFC §6).
  */
 export type ReplayTimingMode = "instant" | "realtime";
 
@@ -33,7 +34,7 @@ export interface ReplayResult {
   /** Which first-class replay mode produced this result. */
   playback?: ReplayPlaybackMode;
   mismatches?: ReplayMismatch[];
-  /** Reserved for future realtime timing diagnostics. */
+  /** Realtime pacing drift notes (best-effort; absent/empty for instant). */
   timingNotes?: string[];
   /** Reserved for future signature regeneration outcomes (no secret material). */
   signatureOutcomes?: Array<{

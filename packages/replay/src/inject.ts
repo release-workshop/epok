@@ -8,7 +8,43 @@ import {
 } from "@epok/core";
 import { createHash } from "node:crypto";
 import { headersFromFields, resolveCasBytes } from "./load.js";
-import type { ReplayMismatch } from "./types.js";
+import type { ReplayMismatch, ReplayTimingMode } from "./types.js";
+
+/** Timer-resolution floor before a late completion is recorded as a timing note. */
+const TIMING_DRIFT_NOTE_MS = 1;
+
+function recordedDurationMs(dependency: Dependency): number {
+  return Math.max(0, dependency.endedAt - dependency.startedAt);
+}
+
+/**
+ * Best-effort realtime pacing: never complete earlier than recorded duration
+ * from the live fetch start, and never earlier than recorded `endedAt` relative
+ * to replay start (RFC §6).
+ */
+async function paceDependencyCompletion(
+  dependency: Dependency,
+  replayStartedAt: number,
+  fetchStartedAt: number,
+  timingNotes: string[],
+): Promise<void> {
+  const duration = recordedDurationMs(dependency);
+  const earliestByDuration = fetchStartedAt + duration;
+  const earliestByRelative = replayStartedAt + Math.max(0, dependency.endedAt);
+  const target = Math.max(earliestByDuration, earliestByRelative);
+  const waitMs = target - performance.now();
+  if (waitMs > 0) {
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, waitMs);
+    });
+  }
+  const drift = performance.now() - target;
+  if (drift > TIMING_DRIFT_NOTE_MS) {
+    timingNotes.push(
+      `seq=${dependency.seq} completed ${Math.round(drift)}ms after target pacing`,
+    );
+  }
+}
 
 export { headersFromFields };
 
@@ -163,6 +199,8 @@ export interface FetchInjection {
   takeMismatches: () => ReplayMismatch[];
   /** True after a terminal dependency miss (no safe candidate to inject). */
   hadHardMismatch: () => boolean;
+  /** Realtime pacing drift notes (empty for instant). */
+  takeTimingNotes: () => string[];
 }
 
 export type DependencyMatchMode = "strict" | "snapshot" | "diagnostic-lenient";
@@ -251,20 +289,25 @@ function matchExecutableAttempt(
 /**
  * Install a `fetch` interceptor that injects recorded dependency responses.
  * Instant timing: responses resolve as soon as matching succeeds.
+ * Realtime timing: delay completion per recorded duration + relative endedAt.
  * Never forwards to the prior `fetch` (no external network).
  */
 export function installDependencyInjection(options: {
   storage: StorageProvider;
   manifest: InteractionManifest;
   matching?: DependencyMatchMode;
+  timing?: ReplayTimingMode;
 }): FetchInjection {
   const { storage, manifest } = options;
   const matching: DependencyMatchMode = options.matching ?? "strict";
+  const timing: ReplayTimingMode = options.timing ?? "instant";
   const unused = new Map(
     manifest.dependencies.map((dep) => [dep.seq, dep] as const),
   );
   const mismatches: ReplayMismatch[] = [];
+  const timingNotes: string[] = [];
   let hardMismatch = false;
+  const replayStartedAt = performance.now();
   const previousFetch = globalThis.fetch;
 
   globalThis.fetch = async (
@@ -278,6 +321,7 @@ export function installDependencyInjection(options: {
       );
     }
 
+    const fetchStartedAt = performance.now();
     let dependency: Dependency | undefined;
     let method: string;
     let url: string;
@@ -305,6 +349,14 @@ export function installDependencyInjection(options: {
     }
 
     unused.delete(dependency.seq);
+    if (timing === "realtime") {
+      await paceDependencyCompletion(
+        dependency,
+        replayStartedAt,
+        fetchStartedAt,
+        timingNotes,
+      );
+    }
     return responseFromDependency(storage, manifest, dependency);
   };
 
@@ -314,5 +366,6 @@ export function installDependencyInjection(options: {
     },
     takeMismatches: () => [...mismatches],
     hadHardMismatch: () => hardMismatch,
+    takeTimingNotes: () => [...timingNotes],
   };
 }

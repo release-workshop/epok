@@ -27,7 +27,7 @@ Options:
   --handler <path>    Handler module for replay run (required for run)
   --report <format>   text | json (default: text)
   --mode <mode>       strict (default) | diagnostic-lenient
-  --timing <mode>     instant (default)
+  --timing <mode>     instant (default) | realtime
   -h, --help          Show this help
 `;
 
@@ -192,6 +192,11 @@ function printReport(
         parts.push(`seq=${mismatch.dependencySeq}`);
       }
       stream(`      - ${parts.join("  ")}`);
+    }
+  }
+  if (result.timingNotes && result.timingNotes.length > 0) {
+    for (const note of result.timingNotes) {
+      stream(`      timing: ${note}`);
     }
   }
 }

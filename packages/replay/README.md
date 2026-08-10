@@ -8,7 +8,7 @@ Consumes stored **Interactions** for executable re-run, snapshot/mock fixtures, 
 - Executable re-run: re-drive the app path and inject recorded **Dependency** responses
 - Snapshot/mock: serve the same artifacts as fixtures **without** executable re-drive
 - Validate integrity / compatibility without full re-execution
-- Defaults: strict matching (fail-fast), instant timing; `diagnostic-lenient` selectable for investigation
+- Defaults: strict matching (fail-fast), instant timing; `diagnostic-lenient` selectable for investigation; `realtime` timing paces dependency completion from recorded timings
 
 Matching helpers live in `@epok/core` (`matchDependency` for executable; `matchSnapshotDependency` for snapshot).
 
@@ -20,6 +20,23 @@ Matching helpers live in `@epok/core` (`matchDependency` for executable; `matchS
 | **Snapshot/mock** (secondary)   | `mockReplay()`           | Materializes inbound + recorded response fixtures; `installFetch()` stubs deps with hybrid signature matching — no handler, no response compare |
 
 Both modes consume the same Interaction artifact. Choose explicitly: do not treat snapshot success as executable verification.
+
+### Timing (`timing`)
+
+| Mode                    | Behavior                                                                                                                                                                                                |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **`instant`** (default) | Deliver dependency responses as soon as matching succeeds.                                                                                                                                              |
+| **`realtime`**          | Best-effort pacing: never complete earlier than recorded duration (`endedAt - startedAt`) from the live fetch, or earlier than recorded `endedAt` from replay start. Drift may appear in `timingNotes`. |
+
+```ts
+const result = await runReplay({
+  storage,
+  interactionId,
+  handler,
+  timing: "realtime",
+});
+// result.timing === "realtime"
+```
 
 ### Mismatch policy (`mode`)
 
@@ -82,7 +99,7 @@ try {
 // ready.playback === "snapshot"
 ```
 
-`ReplayResult` includes optional `timingNotes` / `signatureOutcomes` slots so later timing and signature enrichment can land without reshaping the report type.
+`ReplayResult` may include `timingNotes` when realtime pacing drifts, and reserved `signatureOutcomes` for later signature regeneration.
 
 ## Install
 

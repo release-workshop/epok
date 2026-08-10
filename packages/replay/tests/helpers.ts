@@ -36,6 +36,10 @@ export interface FixtureDependency {
   responseStatus?: number;
   requestHeaders?: Array<{ name: string; value: string }>;
   requestBody?: Uint8Array;
+  /** Monotonic offset from Interaction start (ms). */
+  startedAt?: number;
+  /** Monotonic offset from Interaction start (ms). */
+  endedAt?: number;
 }
 
 /** Persist a minimal Interaction with one outbound dependency for replay tests. */
@@ -122,8 +126,8 @@ export async function persistReplayFixtureWithDeps(
     }
     return {
       seq: dep.seq,
-      startedAt: index + 1,
-      endedAt: index + 2,
+      startedAt: dep.startedAt ?? index + 1,
+      endedAt: dep.endedAt ?? index + 2,
       request: {
         protocol: "HTTP/1.1",
         method: dep.method,

@@ -115,4 +115,40 @@ describe("mockReplay", () => {
       injection.restore();
     }
   });
+
+  it("realtime timing paces snapshot dependency injection", async () => {
+    const storage = createMemoryStorageProvider();
+    const manifest = await persistReplayFixtureWithDeps(storage, {
+      dependencies: [
+        {
+          seq: 1,
+          method: "GET",
+          url: "https://api.example/quote",
+          responseBody: new TextEncoder().encode(JSON.stringify({ quote: 1 })),
+          startedAt: 0,
+          endedAt: 35,
+        },
+      ],
+      appResponseBody: new TextEncoder().encode("{}"),
+    });
+
+    const ready = await mockReplay({
+      storage,
+      interactionId: manifest.id,
+      timing: "realtime",
+    });
+    expect(ready.ok).toBe(true);
+    if (!ready.ok) return;
+    expect(ready.timing).toBe("realtime");
+
+    const injection = ready.installFetch();
+    try {
+      const t0 = performance.now();
+      const response = await fetch("https://api.example/quote");
+      expect(performance.now() - t0).toBeGreaterThanOrEqual(30);
+      expect(await response.json()).toEqual({ quote: 1 });
+    } finally {
+      injection.restore();
+    }
+  });
 });
