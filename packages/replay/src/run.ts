@@ -1,9 +1,5 @@
 import { type StorageProvider } from "@epok/core";
-import {
-  installDependencyInjection,
-  type DependencyMatchMode,
-  type FetchInjection,
-} from "./inject.js";
+import { installDependencyInjection, type FetchInjection } from "./inject.js";
 import { unsupportedSpecVersionMessage } from "./compat.js";
 import { buildInboundRequest, loadManifest, resolveCasBytes } from "./load.js";
 import type {
@@ -35,6 +31,38 @@ function bytesEqual(a: Uint8Array, b: Uint8Array): boolean {
 
 const EXECUTABLE: ReplayPlaybackMode = "executable";
 
+/** Per-mode mismatch reporting policy (one place for strict vs lenient). */
+const mismatchPolicy = {
+  strict: {
+    collectAllResponseMismatches: false,
+    failureMessage(mismatches: readonly ReplayMismatch[]): string {
+      return mismatches[0]?.message ?? "replay mismatch";
+    },
+    reportMismatches(mismatches: readonly ReplayMismatch[]): ReplayMismatch[] {
+      const first = mismatches[0];
+      return first === undefined ? [] : [first];
+    },
+  },
+  "diagnostic-lenient": {
+    collectAllResponseMismatches: true,
+    failureMessage(mismatches: readonly ReplayMismatch[]): string {
+      return `diagnostic-lenient replay found ${mismatches.length} mismatch(es)`;
+    },
+    reportMismatches(mismatches: readonly ReplayMismatch[]): ReplayMismatch[] {
+      return [...mismatches];
+    },
+  },
+} as const satisfies Record<
+  ReplayMismatchMode,
+  {
+    collectAllResponseMismatches: boolean;
+    failureMessage: (mismatches: readonly ReplayMismatch[]) => string;
+    reportMismatches: (
+      mismatches: readonly ReplayMismatch[],
+    ) => ReplayMismatch[];
+  }
+>;
+
 function failure(
   interactionId: string,
   message: string,
@@ -58,30 +86,23 @@ function failure(
   return result;
 }
 
-function unsupportedModes(
+function unsupportedTiming(
   interactionId: string,
   timing: ReplayTimingMode,
   mode: ReplayMismatchMode,
 ): ReplayResult | undefined {
-  if (timing !== "instant") {
-    return failure(interactionId, `unsupported timing mode: ${timing}`, {
-      timing: "instant",
-      mode,
-    });
-  }
-  return undefined;
+  if (timing === "instant") return undefined;
+  return failure(interactionId, `unsupported timing mode: ${timing}`, {
+    timing: "instant",
+    mode,
+  });
 }
 
 function firstMismatchMessage(
   mismatches: readonly ReplayMismatch[],
   fallback: string,
 ): string {
-  const first = mismatches[0];
-  return first === undefined ? fallback : first.message;
-}
-
-function injectionMatching(mode: ReplayMismatchMode): DependencyMatchMode {
-  return mode === "diagnostic-lenient" ? "diagnostic-lenient" : "strict";
+  return mismatches[0]?.message ?? fallback;
 }
 
 function handlerFailure(
@@ -136,6 +157,7 @@ async function compareToRecorded(
     priorMismatches: ReplayMismatch[];
   },
 ): Promise<ReplayResult> {
+  const policy = mismatchPolicy[ctx.mode];
   const actualBody = new Uint8Array(await response.arrayBuffer());
   const expectedBody = await resolveCasBytes(
     storage,
@@ -150,7 +172,7 @@ async function compareToRecorded(
       code: "response_status_mismatch",
       message: `response status ${response.status} !== recorded ${manifest.response.status}`,
     };
-    if (ctx.mode === "strict") {
+    if (!policy.collectAllResponseMismatches) {
       return failure(manifest.id, statusMismatch.message, {
         timing: ctx.timing,
         mode: ctx.mode,
@@ -168,29 +190,22 @@ async function compareToRecorded(
   }
 
   const mismatches = [...ctx.priorMismatches, ...responseMismatches];
-
-  if (mismatches.length > 0) {
-    const first = mismatches[0];
-    const message =
-      ctx.mode === "diagnostic-lenient"
-        ? `diagnostic-lenient replay found ${mismatches.length} mismatch(es)`
-        : firstMismatchMessage(mismatches, "replay mismatch");
-    return failure(manifest.id, message, {
+  if (mismatches.length === 0) {
+    return {
+      ok: true,
+      interactionId: manifest.id,
+      message: "replay matched recorded Interaction",
       timing: ctx.timing,
       mode: ctx.mode,
-      mismatches:
-        ctx.mode === "strict" && first !== undefined ? [first] : mismatches,
-    });
+      playback: EXECUTABLE,
+    };
   }
 
-  return {
-    ok: true,
-    interactionId: manifest.id,
-    message: "replay matched recorded Interaction",
+  return failure(manifest.id, policy.failureMessage(mismatches), {
     timing: ctx.timing,
     mode: ctx.mode,
-    playback: EXECUTABLE,
-  };
+    mismatches: policy.reportMismatches(mismatches),
+  });
 }
 
 /**
@@ -204,7 +219,7 @@ export async function runReplay(
 ): Promise<ReplayResult> {
   const timing: ReplayTimingMode = options.timing ?? "instant";
   const mode: ReplayMismatchMode = options.mode ?? "strict";
-  const unsupported = unsupportedModes(options.interactionId, timing, mode);
+  const unsupported = unsupportedTiming(options.interactionId, timing, mode);
   if (unsupported) return unsupported;
 
   const manifest = await loadManifest(options.storage, options.interactionId);
@@ -217,7 +232,7 @@ export async function runReplay(
   const injection = installDependencyInjection({
     storage: options.storage,
     manifest,
-    matching: injectionMatching(mode),
+    matching: mode,
   });
 
   try {
@@ -234,17 +249,6 @@ export async function runReplay(
 
     const priorMismatches = injection.takeMismatches();
     if (injection.hadHardMismatch()) {
-      return failure(
-        manifest.id,
-        firstMismatchMessage(priorMismatches, "dependency mismatch"),
-        {
-          timing,
-          mode,
-          mismatches: priorMismatches,
-        },
-      );
-    }
-    if (mode === "strict" && priorMismatches.length > 0) {
       return failure(
         manifest.id,
         firstMismatchMessage(priorMismatches, "dependency mismatch"),

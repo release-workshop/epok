@@ -159,9 +159,7 @@ async function responseFromDependency(
 
 export interface FetchInjection {
   restore: () => void;
-  /** First mismatch (strict fail-fast); prefer `takeMismatches` for lenient. */
-  takeMismatch: () => ReplayMismatch | undefined;
-  /** All mismatches accumulated during injection (lenient continues after soft misses). */
+  /** Mismatches accumulated during injection (lenient may soft-match and continue). */
   takeMismatches: () => ReplayMismatch[];
   /** True after a terminal dependency miss (no safe candidate to inject). */
   hadHardMismatch: () => boolean;
@@ -228,6 +226,28 @@ function dependencyMismatch(method: string, url: string): ReplayMismatch {
   };
 }
 
+type ExecutableMatch = {
+  dependency: Dependency | undefined;
+  softMismatch?: ReplayMismatch;
+};
+
+function matchExecutableAttempt(
+  matching: Exclude<DependencyMatchMode, "snapshot">,
+  unused: ReadonlyMap<number, Dependency>,
+  attempt: { method: string; url: string },
+): ExecutableMatch {
+  if (matching === "diagnostic-lenient") {
+    const lenient = matchUnusedDependencyLenient(unused, attempt);
+    if (!lenient) return { dependency: undefined };
+    const result: ExecutableMatch = { dependency: lenient.dependency };
+    if (lenient.softMismatch !== undefined) {
+      result.softMismatch = lenient.softMismatch;
+    }
+    return result;
+  }
+  return { dependency: matchUnusedDependencyStrict(unused, attempt) };
+}
+
 /**
  * Install a `fetch` interceptor that injects recorded dependency responses.
  * Instant timing: responses resolve as soon as matching succeeds.
@@ -267,20 +287,14 @@ export function installDependencyInjection(options: {
       method = attempt.method;
       url = attempt.url;
       dependency = matchUnusedDependencySnapshot(unused, attempt);
-    } else if (matching === "diagnostic-lenient") {
-      method = requestMethod(input, init);
-      url = requestUrl(input);
-      const lenient = matchUnusedDependencyLenient(unused, { method, url });
-      if (lenient) {
-        dependency = lenient.dependency;
-        if (lenient.softMismatch) {
-          mismatches.push(lenient.softMismatch);
-        }
-      }
     } else {
       method = requestMethod(input, init);
       url = requestUrl(input);
-      dependency = matchUnusedDependencyStrict(unused, { method, url });
+      const matched = matchExecutableAttempt(matching, unused, { method, url });
+      dependency = matched.dependency;
+      if (matched.softMismatch) {
+        mismatches.push(matched.softMismatch);
+      }
     }
 
     if (!dependency) {
@@ -298,7 +312,6 @@ export function installDependencyInjection(options: {
     restore: () => {
       globalThis.fetch = previousFetch;
     },
-    takeMismatch: () => mismatches[0],
     takeMismatches: () => [...mismatches],
     hadHardMismatch: () => hardMismatch,
   };
