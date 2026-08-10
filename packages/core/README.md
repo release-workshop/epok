@@ -10,6 +10,7 @@ Shared contracts for Epok’s public core. Fetch-shaped / WinterCG-friendly — 
 - Strict replay request matching (`method` + URL, optional `seq`)
 - Observation hooks using Fetch `Request` / `Response`
 - Epok-owned minimal **sanitizer** ruleset + extension point (header/query/JSON-form redaction)
+- Optional `packs: ["patterns"]` for deeper body pattern redaction (email / Bearer / JWT / PAN-shaped) without changing the MVP default
 
 ## Install
 

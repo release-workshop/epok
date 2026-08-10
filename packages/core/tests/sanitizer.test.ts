@@ -133,3 +133,135 @@ describe("minimal sanitizer ruleset", () => {
     ]);
   });
 });
+
+describe("patterns pack", () => {
+  const sanitizer = createSanitizer({ packs: ["patterns"] });
+
+  it("redacts email-shaped values in JSON bodies", () => {
+    const body = new TextEncoder().encode(
+      JSON.stringify({
+        user: "ada",
+        email: "ada@example.com",
+        note: "contact ada@example.com please",
+      }),
+    );
+    const result = sanitizer.sanitize({
+      headers: [{ name: "Content-Type", value: "application/json" }],
+      body,
+      contentType: "application/json",
+    });
+
+    expect(result.body).toBeDefined();
+    if (result.body === undefined) return;
+
+    expect(JSON.parse(new TextDecoder().decode(result.body))).toEqual({
+      user: "ada",
+      email: REDACTION_SENTINEL,
+      note: `contact ${REDACTION_SENTINEL} please`,
+    });
+  });
+
+  it("redacts JWT, Bearer, and PAN-shaped values in JSON bodies", () => {
+    const jwt =
+      "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjMifQ.signaturepaddingbase64urlchars";
+    const body = new TextEncoder().encode(
+      JSON.stringify({
+        note: `Bearer ${jwt}`,
+        jwt,
+        card: "4111-1111-1111-1111",
+        ok: "keep",
+      }),
+    );
+    const result = sanitizer.sanitize({
+      headers: [{ name: "Content-Type", value: "application/json" }],
+      body,
+      contentType: "application/json",
+    });
+
+    expect(result.body).toBeDefined();
+    if (result.body === undefined) return;
+
+    expect(JSON.parse(new TextDecoder().decode(result.body))).toEqual({
+      note: REDACTION_SENTINEL,
+      jwt: REDACTION_SENTINEL,
+      card: REDACTION_SENTINEL,
+      ok: "keep",
+    });
+  });
+
+  it("redacts pattern matches in form-urlencoded and opaque text bodies", () => {
+    const form = sanitizer.sanitize({
+      headers: [
+        {
+          name: "Content-Type",
+          value: "application/x-www-form-urlencoded",
+        },
+      ],
+      body: new TextEncoder().encode("msg=hello+ada%40example.com&ok=1"),
+      contentType: "application/x-www-form-urlencoded",
+    });
+    expect(form.body).toBeDefined();
+    if (form.body === undefined) return;
+    const params = new URLSearchParams(new TextDecoder().decode(form.body));
+    expect(params.get("msg")).toBe(`hello ${REDACTION_SENTINEL}`);
+    expect(params.get("ok")).toBe("1");
+
+    const text = sanitizer.sanitize({
+      headers: [{ name: "Content-Type", value: "text/plain" }],
+      body: new TextEncoder().encode(
+        "token=Bearer abc.def.ghi and mail ada@example.com",
+      ),
+      contentType: "text/plain",
+    });
+    expect(text.body).toBeDefined();
+    if (text.body === undefined) return;
+    expect(new TextDecoder().decode(text.body)).toBe(
+      `token=${REDACTION_SENTINEL} and mail ${REDACTION_SENTINEL}`,
+    );
+  });
+
+  it("exposes composed ruleset identity without changing the default", () => {
+    const defaults = createSanitizer();
+    expect(defaults.ruleset).toEqual({
+      id: "epok.minimal",
+      hash: "373d8477677c1f37e0ca32c3bd36a18536fb980fc13f3feafc1adafa449c3125",
+    });
+    expect(sanitizer.ruleset).toEqual({
+      id: "epok.minimal+patterns",
+      hash: "051ee834621c2501046ecd47306f87c830ad00f68662d479452b2c884893e62a",
+    });
+  });
+
+  it("applies extraRules after packs", () => {
+    const extended = createSanitizer({
+      packs: ["patterns"],
+      extraRules: [
+        {
+          sanitize(input) {
+            return {
+              ...input,
+              headers: [
+                ...input.headers,
+                { name: "X-Extra", value: "after-packs" },
+              ],
+            };
+          },
+        },
+      ],
+    });
+    const result = extended.sanitize({
+      headers: [{ name: "Content-Type", value: "application/json" }],
+      body: new TextEncoder().encode(
+        JSON.stringify({ email: "ada@example.com" }),
+      ),
+      contentType: "application/json",
+    });
+    expect(result.headers).toContainEqual({
+      name: "X-Extra",
+      value: "after-packs",
+    });
+    expect(JSON.parse(new TextDecoder().decode(result.body))).toEqual({
+      email: REDACTION_SENTINEL,
+    });
+  });
+});

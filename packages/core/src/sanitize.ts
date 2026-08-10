@@ -71,8 +71,13 @@ export interface Sanitizer {
   sanitize(input: SanitizeMessageInput): SanitizeMessageResult;
 }
 
+/** Built-in selectable packs applied after the minimal ruleset. */
+export type SanitizerPackId = "patterns";
+
 export interface CreateSanitizerOptions {
-  /** Extra rules applied after the built-in minimal ruleset. */
+  /** Built-in packs applied after the minimal ruleset, before `extraRules`. */
+  packs?: readonly SanitizerPackId[];
+  /** Extra rules applied after the built-in minimal ruleset (and packs). */
   extraRules?: readonly SanitizerRule[];
 }
 
@@ -181,20 +186,136 @@ function applyMinimalRules(input: SanitizeMessageInput): SanitizeMessageResult {
   return result;
 }
 
+/** Email-shaped substrings (Epok-owned; not a peer product ruleset). */
+const EMAIL_PATTERN = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
+
+/** `Bearer <token>` credentials embedded in free text. */
+const BEARER_PATTERN = /Bearer\s+[A-Za-z0-9._~+/=-]+/gi;
+
+/** Compact JWT-shaped triples (header.payload.signature). */
+const JWT_PATTERN = /eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/g;
+
+/** 16-digit PAN-shaped groups with optional spaces/dashes. */
+const PAN_PATTERN = /\b\d{4}(?:[ -]?\d{4}){3}\b/g;
+
+function redactPatternsInText(text: string): string {
+  return text
+    .replace(BEARER_PATTERN, REDACTION_SENTINEL)
+    .replace(JWT_PATTERN, REDACTION_SENTINEL)
+    .replace(EMAIL_PATTERN, REDACTION_SENTINEL)
+    .replace(PAN_PATTERN, REDACTION_SENTINEL);
+}
+
+function redactPatternsInJsonValue(value: unknown): unknown {
+  if (typeof value === "string") {
+    return redactPatternsInText(value);
+  }
+  if (Array.isArray(value)) {
+    return value.map(redactPatternsInJsonValue);
+  }
+  if (value !== null && typeof value === "object") {
+    const out: Record<string, unknown> = {};
+    for (const [key, child] of Object.entries(
+      value as Record<string, unknown>,
+    )) {
+      out[key] = redactPatternsInJsonValue(child);
+    }
+    return out;
+  }
+  return value;
+}
+
+function redactPatternsInBody(
+  body: Uint8Array,
+  contentType: string | null | undefined,
+): Uint8Array {
+  const type = mediaType(contentType);
+  const text = new TextDecoder().decode(body);
+  if (type === "application/json" || (type?.endsWith("+json") ?? false)) {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      throw new Error(
+        "sanitizer cannot redact unparseable application/json body",
+      );
+    }
+    return new TextEncoder().encode(
+      JSON.stringify(redactPatternsInJsonValue(parsed)),
+    );
+  }
+  if (type === "application/x-www-form-urlencoded") {
+    const params = new URLSearchParams(text);
+    const next = new URLSearchParams();
+    for (const [key, value] of params) {
+      next.append(key, redactPatternsInText(value));
+    }
+    return new TextEncoder().encode(next.toString());
+  }
+  if (type?.startsWith("text/")) {
+    return new TextEncoder().encode(redactPatternsInText(text));
+  }
+  return body;
+}
+
+function applyPatternsPack(
+  input: SanitizeMessageResult,
+  contentType: string | null | undefined,
+): SanitizeMessageResult {
+  if (input.body === undefined) return input;
+  const type =
+    contentType ??
+    input.headers.find((h) => h.name.toLowerCase() === "content-type")?.value ??
+    null;
+  return {
+    ...input,
+    body: redactPatternsInBody(input.body, type),
+  };
+}
+
 /**
- * Build the Epok-owned minimal sanitizer, optionally composing extension rules.
- * Ruleset identity is on the returned `sanitizer.ruleset` / `sanitizer.identity`.
+ * SHA-256 (hex) of the frozen composed ruleset definition JSON when packs
+ * include `patterns`: `{ id, base, packs, sentinel }` with base = minimal
+ * definition and packs =
+ * `[{ id: "patterns", patterns: ["email","bearer","jwt","pan"] }]`.
+ */
+const MINIMAL_PLUS_PATTERNS_RULESET_ID = "epok.minimal+patterns";
+const MINIMAL_PLUS_PATTERNS_RULESET_HASH =
+  "051ee834621c2501046ecd47306f87c830ad00f68662d479452b2c884893e62a";
+
+function resolveRuleset(packs: readonly SanitizerPackId[]): RulesetIdentity {
+  if (packs.length === 0) {
+    return { id: MINIMAL_RULESET_ID, hash: MINIMAL_RULESET_HASH };
+  }
+  const unique = [...new Set(packs)];
+  if (unique.length === 1 && unique[0] === "patterns") {
+    return {
+      id: MINIMAL_PLUS_PATTERNS_RULESET_ID,
+      hash: MINIMAL_PLUS_PATTERNS_RULESET_HASH,
+    };
+  }
+  throw new Error(`unsupported sanitizer packs: ${unique.join(",")}`);
+}
+
+/**
+ * Build the Epok-owned minimal sanitizer, optionally composing packs and
+ * extension rules. Ruleset identity is on the returned `sanitizer.ruleset`.
  */
 export function createSanitizer(
   options: CreateSanitizerOptions = {},
 ): Sanitizer {
+  const packs = options.packs ?? [];
+  const applyPatterns = packs.includes("patterns");
   const extraRules = options.extraRules ?? [];
 
   return {
     identity: { version: SANITIZER_VERSION },
-    ruleset: { id: MINIMAL_RULESET_ID, hash: MINIMAL_RULESET_HASH },
+    ruleset: resolveRuleset(packs),
     sanitize(input: SanitizeMessageInput): SanitizeMessageResult {
       let current = applyMinimalRules(input);
+      if (applyPatterns) {
+        current = applyPatternsPack(current, input.contentType);
+      }
       for (const rule of extraRules) {
         current = rule.sanitize(current);
       }

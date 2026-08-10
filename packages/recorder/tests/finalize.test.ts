@@ -218,4 +218,53 @@ describe("finalizeObservation", () => {
       a.manifest.integrity.manifestHash,
     );
   });
+
+  it("never persists pre-sanitize body bytes when using the patterns pack", () => {
+    const rawEmail = "ada@example.com";
+    const rawPan = "4111-1111-1111-1111";
+    const capture = baseCapture({
+      inbound: {
+        protocol: "HTTP/1.1",
+        method: "POST",
+        url: "https://app.example/checkout",
+        headers: [{ name: "Content-Type", value: "application/json" }],
+        body: new TextEncoder().encode(
+          JSON.stringify({
+            note: `mail ${rawEmail}`,
+            card: rawPan,
+            amount: 10,
+          }),
+        ),
+        contentType: "application/json",
+      },
+    });
+
+    const finalized = finalizeObservation(capture, {
+      sanitizer: createSanitizer({ packs: ["patterns"] }),
+    });
+    expect(finalized).not.toBeNull();
+    if (finalized === null) return;
+
+    expect(finalized.manifest.metadata.ruleset.id).toBe(
+      "epok.minimal+patterns",
+    );
+
+    const inboundBodyHash = finalized.manifest.inbound.body.cas.hash;
+    const embedded = finalized.manifest.objects[inboundBodyHash];
+    const inboundBytes = embedded
+      ? decodeEmbedded(embedded)
+      : finalized.externalObjects[inboundBodyHash];
+    expect(inboundBytes).toBeDefined();
+    if (inboundBytes === undefined) return;
+
+    const inboundText = new TextDecoder().decode(inboundBytes);
+    expect(inboundText).not.toContain(rawEmail);
+    expect(inboundText).not.toContain(rawPan);
+    expect(inboundText).toContain(REDACTION_SENTINEL);
+    expect(JSON.parse(inboundText)).toEqual({
+      note: `mail ${REDACTION_SENTINEL}`,
+      card: REDACTION_SENTINEL,
+      amount: 10,
+    });
+  });
 });

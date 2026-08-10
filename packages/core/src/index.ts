@@ -60,5 +60,6 @@ export type {
   SanitizeMessageInput,
   SanitizeMessageResult,
   Sanitizer,
+  SanitizerPackId,
   SanitizerRule,
 } from "./sanitize.js";
