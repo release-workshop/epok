@@ -3,7 +3,9 @@ import {
   beginBodyRead,
   endBodyRead,
   headersToFields,
-  readFetchBodies,
+  readBufferedBodyInit,
+  takeCapturedBytes,
+  teeFetchResponseBody,
   type CaptureBuffers,
 } from "./capture.js";
 import { requestContext } from "./context.js";
@@ -54,7 +56,7 @@ export function installFetchIntercept(
     observeDependency(ctx, input, init, response, hooks, emit);
 
     if (ctx?.capture && !ctx.capture.dropped) {
-      scheduleDependencyCapture(
+      return scheduleDependencyCapture(
         ctx.capture,
         input,
         init,
@@ -79,7 +81,7 @@ function scheduleDependencyCapture(
   response: Response,
   startedAt: number,
   pressure: PressureController,
-): void {
+): Response {
   beginBodyRead(buf);
   const seq = buf.dependencies.length + 1;
   // Placeholder so seq ordering is stable even if body read finishes out of order.
@@ -98,15 +100,20 @@ function scheduleDependencyCapture(
   };
   buf.dependencies.push(placeholder);
 
+  const teed = teeFetchResponseBody(response);
+  const appResponse = teed.response;
+  const captureBody = teed.captureBody;
+
   void (async () => {
     try {
       const request = new Request(input, init);
-      const { requestBody, responseBody } = await readFetchBodies(
+      const requestBody = await readOutboundRequestBody(
         request,
-        response,
+        init,
         pressure,
         buf,
       );
+      const responseBody = takeCapturedBytes(pressure, buf, await captureBody);
       const endedAt = Math.max(
         placeholder.startedAt,
         Math.round(performance.now() - buf.startedAt),
@@ -134,6 +141,28 @@ function scheduleDependencyCapture(
       endBodyRead(buf);
     }
   })();
+
+  return appResponse;
+}
+
+async function readOutboundRequestBody(
+  request: Request,
+  init: RequestInit | undefined,
+  pressure: PressureController,
+  buf: CaptureBuffers,
+): Promise<Uint8Array> {
+  try {
+    const buffered = readBufferedBodyInit(init?.body);
+    if (buffered !== null) {
+      return takeCapturedBytes(pressure, buf, buffered);
+    }
+    // Request constructed solely for capture — consume once, no clone.
+    if (!request.body) return new Uint8Array();
+    const bytes = new Uint8Array(await request.arrayBuffer());
+    return takeCapturedBytes(pressure, buf, bytes);
+  } catch {
+    return new Uint8Array();
+  }
 }
 
 function recordDependencyError(

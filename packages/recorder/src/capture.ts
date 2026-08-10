@@ -330,33 +330,85 @@ export function buildObservedCapture(
   };
 }
 
-export async function readFetchBodies(
-  request: Request,
-  response: Response | null,
+/**
+ * Extract bytes from a buffered BodyInit without cloning a stream.
+ * Returns `null` when omitted or streaming (caller may try another source).
+ */
+export function readBufferedBodyInit(
+  body: BodyInit | null | undefined,
+): Uint8Array | null {
+  if (body === undefined) return null;
+  if (body === null) return new Uint8Array();
+  if (typeof body === "string") {
+    return new TextEncoder().encode(body);
+  }
+  if (body instanceof Uint8Array) {
+    return body;
+  }
+  if (body instanceof ArrayBuffer) {
+    return new Uint8Array(body);
+  }
+  if (ArrayBuffer.isView(body)) {
+    return new Uint8Array(body.buffer, body.byteOffset, body.byteLength);
+  }
+  return null;
+}
+
+/**
+ * Tee a fetch Response body so the app and capture each get a branch from a
+ * single underlying pull (no parallel `clone().arrayBuffer()`). Fail-open:
+ * on tee failure, return the original response and an empty capture body.
+ */
+export function teeFetchResponseBody(response: Response): {
+  response: Response;
+  captureBody: Promise<Uint8Array>;
+} {
+  const body = response.body;
+  if (!body) {
+    return { response, captureBody: Promise.resolve(new Uint8Array()) };
+  }
+  try {
+    const [appBranch, captureBranch] = body.tee();
+    const captureBody: Promise<Uint8Array> = new Response(captureBranch)
+      .arrayBuffer()
+      .then((buf) => {
+        const bytes = new Uint8Array(buf.byteLength);
+        bytes.set(new Uint8Array(buf));
+        return bytes;
+      })
+      .catch(() => new Uint8Array());
+    const appResponse = new Response(appBranch, {
+      status: response.status,
+      statusText: response.statusText,
+      headers: response.headers,
+    });
+    // Response constructor leaves url/redirected empty; restore from upstream.
+    try {
+      Object.defineProperty(appResponse, "url", { value: response.url });
+      Object.defineProperty(appResponse, "redirected", {
+        value: response.redirected,
+      });
+    } catch {
+      // Best-effort; body tee still succeeds.
+    }
+    return {
+      response: appResponse,
+      captureBody,
+    };
+  } catch {
+    return { response, captureBody: Promise.resolve(new Uint8Array()) };
+  }
+}
+
+/** Reserve captured body bytes under pressure; empty on budget failure. */
+export function takeCapturedBytes(
   pressure: PressureController,
   buf: CaptureBuffers,
-): Promise<{ requestBody: Uint8Array; responseBody: Uint8Array }> {
-  let requestBody = new Uint8Array();
-  let responseBody = new Uint8Array();
-  try {
-    if (request.body) {
-      const bytes = new Uint8Array(await request.clone().arrayBuffer());
-      if (reserveCaptureBytes(pressure, buf, bytes.byteLength)) {
-        requestBody = bytes;
-      }
-    }
-  } catch {
-    // Fail-open: leave empty.
+  bytes: Uint8Array,
+): Uint8Array {
+  if (bytes.byteLength === 0) return bytes;
+  if (!reserveCaptureBytes(pressure, buf, bytes.byteLength)) {
+    return new Uint8Array();
   }
-  try {
-    if (response) {
-      const bytes = new Uint8Array(await response.clone().arrayBuffer());
-      if (reserveCaptureBytes(pressure, buf, bytes.byteLength)) {
-        responseBody = bytes;
-      }
-    }
-  } catch {
-    // Fail-open: leave empty.
-  }
-  return { requestBody, responseBody };
+  return bytes;
 }
