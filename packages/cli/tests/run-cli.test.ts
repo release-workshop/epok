@@ -310,4 +310,37 @@ describe("runCli", () => {
       /--handler/,
     );
   });
+
+  it("mock loads snapshot fixtures without --handler and exits 0", async () => {
+    const { rootDir, storage } = await makeStorageRoot();
+    const manifest = await persistFixture(storage);
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const err = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+    const code = await runCli([
+      "node",
+      "epok",
+      "replay",
+      "mock",
+      "--dir",
+      rootDir,
+      "--report",
+      "json",
+      manifest.id,
+    ]);
+
+    expect(code).toBe(0);
+    expect(err).not.toHaveBeenCalled();
+    const raw = String(log.mock.calls[0]?.[0] ?? "");
+    const parsed = JSON.parse(raw) as {
+      ok: boolean;
+      playback: string;
+      dependencyCount: number;
+      interactionId: string;
+    };
+    expect(parsed.ok).toBe(true);
+    expect(parsed.playback).toBe("snapshot");
+    expect(parsed.dependencyCount).toBe(1);
+    expect(parsed.interactionId).toBe(manifest.id);
+  });
 });

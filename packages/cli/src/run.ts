@@ -2,6 +2,7 @@ import { pathToFileURL } from "node:url";
 import path from "node:path";
 import { createFsStorageProvider } from "@epok/storage-fs";
 import {
+  mockReplay,
   runReplay,
   validateReplay,
   type ReplayHandler,
@@ -13,6 +14,13 @@ import {
 const USAGE = `Usage:
   epok replay validate [options] <interaction-id>
   epok replay run [options] <interaction-id>
+  epok replay mock [options] <interaction-id>
+
+Commands:
+  validate   Integrity + compatibility checks (no execution)
+  run        Executable re-run: re-drive handler, inject deps, compare response
+  mock       Snapshot/mock: load fixtures without executable re-drive
+             (library installFetch stubs deps; CLI confirms fixtures load)
 
 Options:
   --dir <path>        Filesystem Storage Provider root (default: .epok)
@@ -26,7 +34,7 @@ Options:
 type ReportFormat = "text" | "json";
 
 interface ParsedArgs {
-  command: "run" | "validate" | "help" | undefined;
+  command: "run" | "validate" | "mock" | "help" | undefined;
   interactionId: string | undefined;
   dir: string;
   handler: string | undefined;
@@ -104,7 +112,7 @@ function parseArgs(args: readonly string[]): ParsedArgs {
   }
 
   const sub = args[1];
-  if (sub === "run" || sub === "validate") {
+  if (sub === "run" || sub === "validate" || sub === "mock") {
     state.command = sub;
   } else if (sub === "-h" || sub === "--help" || sub === undefined) {
     state.command = "help";
@@ -154,7 +162,10 @@ function parseArgs(args: readonly string[]): ParsedArgs {
   return state;
 }
 
-function printReport(result: ReplayResult, format: ReportFormat): void {
+function printReport(
+  result: ReplayResult & { dependencyCount?: number },
+  format: ReportFormat,
+): void {
   if (format === "json") {
     console.log(JSON.stringify(result, null, 2));
     return;
@@ -164,6 +175,12 @@ function printReport(result: ReplayResult, format: ReportFormat): void {
   const label = result.ok ? "PASS" : "FAIL";
   stream(`${label}  ${result.interactionId}`);
   stream(`      ${result.message}`);
+  if (result.playback !== undefined) {
+    stream(`      playback=${result.playback}`);
+  }
+  if (result.dependencyCount !== undefined) {
+    stream(`      dependencies=${result.dependencyCount}`);
+  }
   if (result.mismatches && result.mismatches.length > 0) {
     for (const mismatch of result.mismatches) {
       const parts = [`${mismatch.code}: ${mismatch.message}`];
@@ -196,7 +213,7 @@ async function loadHandler(handlerPath: string): Promise<ReplayHandler> {
 }
 
 /**
- * CLI entry for `epok replay run` / `epok replay validate`.
+ * CLI entry for `epok replay run` / `validate` / `mock`.
  */
 export async function runCli(argv: readonly string[]): Promise<number> {
   const [, , ...args] = argv;
@@ -237,6 +254,30 @@ export async function runCli(argv: readonly string[]): Promise<number> {
       });
       printReport(result, parsed.report);
       return result.ok ? 0 : 1;
+    }
+
+    if (parsed.command === "mock") {
+      const ready = await mockReplay({
+        storage,
+        interactionId: parsed.interactionId,
+        mode: parsed.mode,
+        timing: parsed.timing,
+      });
+      if (!ready.ok) {
+        printReport(ready, parsed.report);
+        return 1;
+      }
+      const report: ReplayResult & { dependencyCount: number } = {
+        ok: true,
+        interactionId: ready.interactionId,
+        message: ready.message,
+        timing: ready.timing,
+        mode: ready.mode,
+        playback: ready.playback,
+        dependencyCount: ready.dependencyCount,
+      };
+      printReport(report, parsed.report);
+      return 0;
     }
 
     if (parsed.handler === undefined) {

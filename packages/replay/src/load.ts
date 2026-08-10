@@ -2,6 +2,7 @@ import {
   StorageError,
   type CasRef,
   type EmbeddedObject,
+  type HeaderField,
   type InteractionManifest,
   type StorageProvider,
 } from "@epok/core";
@@ -16,6 +17,14 @@ function decodeEmbedded(embedded: EmbeddedObject): Uint8Array {
     bytes[i] = binary.charCodeAt(i);
   }
   return bytes;
+}
+
+export function headersFromFields(fields: readonly HeaderField[]): Headers {
+  const headers = new Headers();
+  for (const field of fields) {
+    headers.append(field.name, field.value);
+  }
+  return headers;
 }
 
 /** Load Interaction manifest JSON bytes from a Storage Provider. */
@@ -55,4 +64,45 @@ export async function resolveCasBytes(
     return decodeEmbedded(embedded);
   }
   return storage.getObject({ alg: ref.alg, hash: ref.hash });
+}
+
+/** Materialize the recorded inbound Request from an Interaction. */
+export async function buildInboundRequest(
+  storage: StorageProvider,
+  manifest: InteractionManifest,
+): Promise<Request> {
+  const body = await resolveCasBytes(
+    storage,
+    manifest,
+    manifest.inbound.body.cas,
+  );
+  const init: RequestInit = {
+    method: manifest.inbound.method,
+    headers: headersFromFields(manifest.inbound.headers),
+  };
+  const method = manifest.inbound.method.toUpperCase();
+  if (method !== "GET" && method !== "HEAD" && body.byteLength > 0) {
+    init.body = Uint8Array.from(body);
+  }
+  return new Request(manifest.inbound.url, init);
+}
+
+/** Materialize the recorded terminal Response fixture from an Interaction. */
+export async function buildRecordedResponse(
+  storage: StorageProvider,
+  manifest: InteractionManifest,
+): Promise<Response> {
+  const body = await resolveCasBytes(
+    storage,
+    manifest,
+    manifest.response.body.cas,
+  );
+  const init: ResponseInit = {
+    status: manifest.response.status,
+    headers: headersFromFields(manifest.response.headers),
+  };
+  if (manifest.response.statusText !== undefined) {
+    init.statusText = manifest.response.statusText;
+  }
+  return new Response(Uint8Array.from(body), init);
 }

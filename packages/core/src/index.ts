@@ -45,8 +45,16 @@ export {
 } from "./storage-verify.js";
 export type { Sha256HexFn } from "./storage-verify.js";
 
-export { matchDependency, matchKeyFromDependency } from "./replay.js";
-export type { ReplayMatchKey, ReplayMatchOptions } from "./replay.js";
+export {
+  matchDependency,
+  matchKeyFromDependency,
+  matchSnapshotDependency,
+} from "./replay.js";
+export type {
+  ReplayMatchKey,
+  ReplayMatchOptions,
+  SnapshotMatchAttempt,
+} from "./replay.js";
 
 export type {
   DependencyObservationError,

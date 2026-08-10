@@ -1,14 +1,11 @@
-import { type InteractionManifest, type StorageProvider } from "@epok/core";
-import {
-  headersFromFields,
-  installDependencyInjection,
-  type FetchInjection,
-} from "./inject.js";
+import { type StorageProvider } from "@epok/core";
+import { installDependencyInjection, type FetchInjection } from "./inject.js";
 import { unsupportedSpecVersionMessage } from "./compat.js";
-import { loadManifest, resolveCasBytes } from "./load.js";
+import { buildInboundRequest, loadManifest, resolveCasBytes } from "./load.js";
 import type {
   ReplayMismatch,
   ReplayMismatchMode,
+  ReplayPlaybackMode,
   ReplayResult,
   ReplayTimingMode,
 } from "./types.js";
@@ -24,27 +21,6 @@ export interface ReplayRunOptions {
   mode?: ReplayMismatchMode;
 }
 
-async function buildInboundRequest(
-  storage: StorageProvider,
-  manifest: InteractionManifest,
-): Promise<Request> {
-  const body = await resolveCasBytes(
-    storage,
-    manifest,
-    manifest.inbound.body.cas,
-  );
-  const init: RequestInit = {
-    method: manifest.inbound.method,
-    headers: headersFromFields(manifest.inbound.headers),
-  };
-  // Fetch forbids a body on GET/HEAD.
-  const method = manifest.inbound.method.toUpperCase();
-  if (method !== "GET" && method !== "HEAD" && body.byteLength > 0) {
-    init.body = Uint8Array.from(body);
-  }
-  return new Request(manifest.inbound.url, init);
-}
-
 function bytesEqual(a: Uint8Array, b: Uint8Array): boolean {
   if (a.byteLength !== b.byteLength) return false;
   for (let i = 0; i < a.byteLength; i += 1) {
@@ -52,6 +28,8 @@ function bytesEqual(a: Uint8Array, b: Uint8Array): boolean {
   }
   return true;
 }
+
+const EXECUTABLE: ReplayPlaybackMode = "executable";
 
 function failure(
   interactionId: string,
@@ -68,6 +46,7 @@ function failure(
     message,
     timing: options.timing,
     mode: options.mode,
+    playback: EXECUTABLE,
   };
   if (options.mismatches !== undefined) {
     result.mismatches = options.mismatches;
@@ -122,7 +101,7 @@ function handlerFailure(
 
 async function compareToRecorded(
   storage: StorageProvider,
-  manifest: InteractionManifest,
+  manifest: Awaited<ReturnType<typeof loadManifest>>,
   response: Response,
   ctx: { timing: ReplayTimingMode; mode: ReplayMismatchMode },
 ): Promise<ReplayResult> {
@@ -163,6 +142,7 @@ async function compareToRecorded(
     message: "replay matched recorded Interaction",
     timing: ctx.timing,
     mode: ctx.mode,
+    playback: EXECUTABLE,
   };
 }
 

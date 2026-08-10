@@ -7,6 +7,7 @@ Command-line interface for Epok (`epok` bin).
 Thin ergonomics over `@epok/replay` for local workflows:
 
 - `epok replay run <interaction-id>` — executable re-run with a handler module
+- `epok replay mock <interaction-id>` — snapshot/mock fixtures (no handler / no re-drive)
 - `epok replay validate <interaction-id>` — integrity / compatibility checks
 
 ## Usage
@@ -14,7 +15,12 @@ Thin ergonomics over `@epok/replay` for local workflows:
 ```bash
 epok replay validate --dir .epok-data <interaction-id>
 epok replay run --dir .epok-data --handler ./handler.js <interaction-id>
+epok replay mock --dir .epok-data <interaction-id>
 ```
+
+`run` is executable re-run (re-drives the handler and compares the response).
+`mock` loads snapshot fixtures from the Interaction (no handler / no re-drive).
+Use `mockReplay().installFetch()` in library code to stub dependencies.
 
 Options:
 

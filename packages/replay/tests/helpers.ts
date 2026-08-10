@@ -34,6 +34,8 @@ export interface FixtureDependency {
   url: string;
   responseBody: Uint8Array;
   responseStatus?: number;
+  requestHeaders?: Array<{ name: string; value: string }>;
+  requestBody?: Uint8Array;
 }
 
 /** Persist a minimal Interaction with one outbound dependency for replay tests. */
@@ -107,6 +109,17 @@ export async function persistReplayFixtureWithDeps(
       hash: depResCas.hash,
       size: depResCas.size,
     });
+    const reqBody = dep.requestBody ?? new Uint8Array();
+    const depReqCas =
+      reqBody.byteLength === 0 ? emptyReqCas : casRefFor(reqBody, null);
+    if (reqBody.byteLength > 0) {
+      objects[depReqCas.hash] = embedUtf8(reqBody);
+      integrityObjects.push({
+        alg: "sha256",
+        hash: depReqCas.hash,
+        size: depReqCas.size,
+      });
+    }
     return {
       seq: dep.seq,
       startedAt: index + 1,
@@ -115,8 +128,8 @@ export async function persistReplayFixtureWithDeps(
         protocol: "HTTP/1.1",
         method: dep.method,
         url: dep.url,
-        headers: [],
-        body: { cas: emptyReqCas },
+        headers: dep.requestHeaders ?? [],
+        body: { cas: depReqCas },
       },
       response: {
         protocol: "HTTP/1.1",

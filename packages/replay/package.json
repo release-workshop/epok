@@ -1,7 +1,7 @@
 {
   "name": "@epok/replay",
   "version": "0.0.0",
-  "description": "Epok replay: executable re-run and validation over Interaction artifacts",
+  "description": "Epok replay: executable re-run, snapshot/mock, and validation over Interaction artifacts",
   "type": "module",
   "exports": {
     ".": {

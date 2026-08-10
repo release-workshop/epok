@@ -33,6 +33,16 @@ On mismatch, the CLI prints `FAIL` with an actionable code (for example `depende
 2. **Validate** — `epok replay validate` checks manifest + CAS closure
 3. **Replay** — `epok replay run --handler …` re-drives the app path and injects the recorded dependency response (no live dependency)
 
+For fixture-only workflows (no handler re-drive), load snapshot fixtures:
+
+```bash
+pnpm --filter @epok/cli exec epok replay mock \
+  --dir examples/demo/.epok-data \
+  <interaction-id>
+```
+
+`run` verifies executable re-run. `mock` confirms snapshot fixtures load from the same Interaction (dependency stubbing is via `mockReplay().installFetch()` in library code).
+
 ## Manual CLI
 
 After `pnpm --filter @epok/demo record`:

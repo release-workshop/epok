@@ -8,6 +8,12 @@ export type ReplayTimingMode = "instant" | "realtime";
  */
 export type ReplayMismatchMode = "strict" | "diagnostic-lenient";
 
+/**
+ * First-class replay modes over the same Interaction artifact (RFC §3).
+ * `executable` re-drives the app path; `snapshot` serves fixtures only.
+ */
+export type ReplayPlaybackMode = "executable" | "snapshot";
+
 export interface ReplayMismatch {
   code: string;
   message: string;
@@ -22,6 +28,8 @@ export interface ReplayResult {
   message: string;
   timing?: ReplayTimingMode;
   mode?: ReplayMismatchMode;
+  /** Which first-class replay mode produced this result. */
+  playback?: ReplayPlaybackMode;
   mismatches?: ReplayMismatch[];
   /** Reserved for future realtime timing diagnostics. */
   timingNotes?: string[];

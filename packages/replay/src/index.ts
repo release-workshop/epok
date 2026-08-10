@@ -1,18 +1,26 @@
-import { matchDependency } from "@epok/core";
+import { matchDependency, matchSnapshotDependency } from "@epok/core";
 import type { InteractionManifest, StorageProvider } from "@epok/core";
 
-export { matchDependency };
+export { matchDependency, matchSnapshotDependency };
 export type { InteractionManifest, StorageProvider };
 
 export type {
   ReplayMismatch,
   ReplayMismatchMode,
+  ReplayPlaybackMode,
   ReplayResult,
   ReplayTimingMode,
 } from "./types.js";
 
 export { runReplay } from "./run.js";
 export type { ReplayHandler, ReplayRunOptions } from "./run.js";
+
+export { mockReplay } from "./mock.js";
+export type {
+  MockReplayOptions,
+  MockReplayReady,
+  MockReplayResult,
+} from "./mock.js";
 
 export { validateReplay } from "./validate.js";
 export type { ReplayValidateOptions } from "./validate.js";
