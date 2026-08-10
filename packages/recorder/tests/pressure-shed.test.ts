@@ -1,11 +1,18 @@
 import { createServer, type Server } from "node:http";
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  DEFAULT_PRESSURE_LIMITS,
   attachRecorder,
   type RecorderHandle,
   type RecorderWideEvent,
 } from "../src/index.js";
 import { slowStorage, unusedStorage } from "./helpers.js";
+
+describe("default pressure concurrency", () => {
+  it("keeps maxConcurrency at 2 (finalize steal is not fixed by raising it)", () => {
+    expect(DEFAULT_PRESSURE_LIMITS.maxConcurrency).toBe(2);
+  });
+});
 
 describe("attachRecorder pressure controls", () => {
   let handle: RecorderHandle | undefined;

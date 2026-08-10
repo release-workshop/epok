@@ -184,4 +184,38 @@ describe("finalizeObservation", () => {
       }),
     );
   });
+
+  it("locks canonical integrity.manifestHash for a pinned capture (CAS integrity)", () => {
+    const capture = baseCapture({
+      recorder: { name: "@epok/recorder", version: "0.0.0" },
+      runtime: { name: "node", version: "22.0.0" },
+      captureMode: "full",
+    });
+    const finalized = finalizeObservation(capture);
+    expect(finalized).not.toBeNull();
+    if (finalized === null) return;
+    expect(finalized.manifest.integrity.manifestHash).toBe(
+      "c06c5bc1f1957170a040f147f257130254f1a050c6b5cdad56f97e223d9cacb9",
+    );
+  });
+
+  it("canonicalizes object key order when hashing the manifest", () => {
+    const capture = baseCapture({
+      recorder: { name: "@epok/recorder", version: "0.0.0" },
+      runtime: { name: "node", version: "22.0.0" },
+      captureMode: "full",
+    });
+    const a = finalizeObservation(capture);
+    const b = finalizeObservation({
+      ...capture,
+      recorder: { version: "0.0.0", name: "@epok/recorder" },
+      runtime: { version: "22.0.0", name: "node" },
+    });
+    expect(a).not.toBeNull();
+    expect(b).not.toBeNull();
+    if (a === null || b === null) return;
+    expect(b.manifest.integrity.manifestHash).toBe(
+      a.manifest.integrity.manifestHash,
+    );
+  });
 });

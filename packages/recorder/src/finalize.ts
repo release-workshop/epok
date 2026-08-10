@@ -90,6 +90,18 @@ function sha256Hex(bytes: Uint8Array): string {
   return createHash("sha256").update(bytes).digest("hex");
 }
 
+function sha256HexUtf8(text: string): string {
+  return createHash("sha256").update(text, "utf8").digest("hex");
+}
+
+const EMPTY_BODY_BYTES = new Uint8Array();
+const EMPTY_BODY_HASH = sha256Hex(EMPTY_BODY_BYTES);
+const EMPTY_EMBEDDED: EmbeddedObject = Object.freeze({
+  encoding: "utf-8",
+  data: "",
+});
+const UTF8_DECODER = new TextDecoder("utf-8", { fatal: true });
+
 function contentTypeOf(
   headers: HeaderField[],
   explicit?: string | null,
@@ -101,8 +113,7 @@ function contentTypeOf(
 
 function embedObject(bytes: Uint8Array): EmbeddedObject {
   try {
-    const text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
-    return { encoding: "utf-8", data: text };
+    return { encoding: "utf-8", data: UTF8_DECODER.decode(bytes) };
   } catch {
     return {
       encoding: "base64",
@@ -111,23 +122,61 @@ function embedObject(bytes: Uint8Array): EmbeddedObject {
   }
 }
 
-function sortKeys(value: unknown): unknown {
-  if (Array.isArray(value)) {
-    return value.map(sortKeys);
+/**
+ * One-pass RFC 8259 JSON with sorted object keys — same bytes as
+ * `JSON.stringify(sortKeys(value))` without allocating the intermediate tree.
+ */
+function appendCanonicalJson(value: unknown, out: string[]): void {
+  if (value === null) {
+    out.push("null");
+    return;
   }
-  if (value !== null && typeof value === "object") {
-    const obj = value as Record<string, unknown>;
-    const sorted: Record<string, unknown> = {};
-    for (const key of Object.keys(obj).sort()) {
-      sorted[key] = sortKeys(obj[key]);
+  switch (typeof value) {
+    case "boolean":
+      out.push(value ? "true" : "false");
+      return;
+    case "number":
+      out.push(JSON.stringify(value));
+      return;
+    case "string":
+      out.push(JSON.stringify(value));
+      return;
+    case "object": {
+      if (Array.isArray(value)) {
+        out.push("[");
+        for (let i = 0; i < value.length; i++) {
+          if (i > 0) out.push(",");
+          appendCanonicalJson(value[i], out);
+        }
+        out.push("]");
+        return;
+      }
+      const obj = value as Record<string, unknown>;
+      const keys = Object.keys(obj).sort();
+      out.push("{");
+      let wrote = false;
+      for (const key of keys) {
+        const child = obj[key];
+        // Match JSON.stringify: omit undefined object properties.
+        if (child === undefined) continue;
+        if (wrote) out.push(",");
+        wrote = true;
+        out.push(JSON.stringify(key));
+        out.push(":");
+        appendCanonicalJson(child, out);
+      }
+      out.push("}");
+      return;
     }
-    return sorted;
+    default:
+      out.push("null");
   }
-  return value;
 }
 
-function stableStringify(value: unknown): string {
-  return JSON.stringify(sortKeys(value));
+function canonicalJson(value: unknown): string {
+  const out: string[] = [];
+  appendCanonicalJson(value, out);
+  return out.join("");
 }
 
 function emitSafe(
@@ -158,6 +207,18 @@ function placeSanitizedBody(
   contentType: string | null,
   contentEncoding: string | null,
 ): CasPlacement {
+  if (bytes.byteLength === 0) {
+    return {
+      ref: {
+        alg: "sha256",
+        hash: EMPTY_BODY_HASH,
+        size: 0,
+        contentType,
+        contentEncoding,
+      },
+      embedded: EMPTY_EMBEDDED,
+    };
+  }
   const hash = sha256Hex(bytes);
   const ref = {
     alg: "sha256" as const,
@@ -213,7 +274,7 @@ function sanitizeMessageParts(
     ...(url !== undefined ? { url } : {}),
   });
   const placement = placeSanitizedBody(
-    sanitized.body ?? new Uint8Array(),
+    sanitized.body ?? EMPTY_BODY_BYTES,
     contentTypeOf(sanitized.headers, message.contentType),
     message.contentEncoding ?? null,
   );
@@ -320,7 +381,7 @@ function assembleManifest(input: {
     captureMode: capture.captureMode ?? "full",
   };
 
-  const draft = {
+  const draft: InteractionManifest = {
     id: capture.id,
     specVersion: SPEC_VERSION,
     metadata,
@@ -335,17 +396,8 @@ function assembleManifest(input: {
     },
   };
 
-  const manifestHash = sha256Hex(
-    new TextEncoder().encode(stableStringify(draft)),
-  );
-
-  return {
-    ...draft,
-    integrity: {
-      manifestHash,
-      objects: integrityObjects,
-    },
-  };
+  draft.integrity.manifestHash = sha256HexUtf8(canonicalJson(draft));
+  return draft;
 }
 
 /**
