@@ -30,6 +30,7 @@ describe("attachRecorder pressure controls", () => {
     const events: RecorderWideEvent[] = [];
     handle = attachRecorder({
       storage: slowStorage(200),
+      captureMode: "full",
       pressure: {
         maxQueueDepth: 2,
         maxConcurrency: 1,
@@ -75,6 +76,7 @@ describe("attachRecorder pressure controls", () => {
     const events: RecorderWideEvent[] = [];
     handle = attachRecorder({
       storage: slowStorage(300),
+      captureMode: "full",
       pressure: {
         maxQueueDepth: 100,
         maxConcurrency: 1,
@@ -130,6 +132,7 @@ describe("attachRecorder pressure controls", () => {
 
     handle = attachRecorder({
       storage,
+      captureMode: "full",
       pressure: {
         maxQueueDepth: 32,
         maxConcurrency: 2,

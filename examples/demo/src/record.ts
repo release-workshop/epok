@@ -163,6 +163,7 @@ export async function recordOnce(
     const capture: ObservedCapture = {
       id: interactionId,
       capturedAt: new Date().toISOString(),
+      captureMode: "full",
       inbound: requestToObserved(inboundRequest, inboundBody),
       dependencies,
       response: {

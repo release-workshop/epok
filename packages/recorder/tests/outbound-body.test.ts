@@ -111,6 +111,7 @@ describe("attachRecorder outbound body collect", () => {
     const events: RecorderWideEvent[] = [];
     handle = attachRecorder({
       storage,
+      captureMode: "full",
       onEvent: (e) => events.push(e),
     });
 
@@ -155,6 +156,7 @@ describe("attachRecorder outbound body collect", () => {
     const events: RecorderWideEvent[] = [];
     handle = attachRecorder({
       storage,
+      captureMode: "full",
       onEvent: (e) => events.push(e),
     });
 
@@ -197,7 +199,7 @@ describe("attachRecorder outbound body collect", () => {
 
   it("keeps host fetch succeeding when the app fully consumes the dependency body", async () => {
     const storage = memoryStorage();
-    handle = attachRecorder({ storage });
+    handle = attachRecorder({ storage, captureMode: "full" });
 
     dependencyServer = createServer((_req, res) => {
       res.writeHead(200);

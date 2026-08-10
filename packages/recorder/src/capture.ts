@@ -1,5 +1,6 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { HeaderField } from "@epok/core";
+import type { CaptureMode } from "./capture-mode.js";
 import type {
   ObservedCapture,
   ObservedDependency,
@@ -23,6 +24,8 @@ export interface CaptureBuffers {
   reservedBytes: number;
   dropped: boolean;
   dropReason?: string;
+  /** Uncaught/terminal host failure (destroy/errored/sync throw). */
+  terminalHostError: boolean;
   bodyWaiters: Array<() => void>;
 }
 
@@ -45,6 +48,7 @@ export function createCaptureBuffers(): CaptureBuffers {
     pendingBodyReads: 0,
     reservedBytes: 0,
     dropped: false,
+    terminalHostError: false,
     bodyWaiters: [],
   };
 }
@@ -289,6 +293,7 @@ export function buildObservedCapture(
   interactionId: string,
   req: IncomingMessage,
   buf: CaptureBuffers,
+  captureMode?: CaptureMode,
 ): ObservedCapture {
   const inbound: ObservedHttpRequest = {
     protocol: `HTTP/${req.httpVersion}`,
@@ -327,6 +332,7 @@ export function buildObservedCapture(
     inbound,
     dependencies: buf.dependencies,
     response,
+    ...(captureMode !== undefined ? { captureMode } : {}),
   };
 }
 

@@ -16,6 +16,19 @@ Core observation contracts stay Fetch-shaped in `@epok/core`. This package adapt
 
 `attachRecorder` installs Node attach (request-scoped context, inbound `http.Server` wrap, outbound `fetch` intercept) and enqueues sanitize → finalize → persist on a bounded async queue. `enabled: false` keeps interception plumbing installed while short-circuiting capture/sanitize/persist (structural no-op baseline). When queue/context/buffer budgets are exceeded, Interactions are dropped (never the host request). Wide events cover observed/finalized/persisted/dropped, queue depth, and shedding activation.
 
+## Capture intensity (`captureMode`)
+
+Collect stays always-on when the recorder is enabled. Persist intensity is controlled by `captureMode`:
+
+| Mode       | Default? | Sanitize → finalize → persist                              |
+| ---------- | -------- | ---------------------------------------------------------- |
+| `"errors"` | **yes**  | Only inbound status **≥ 500** or a terminal host exception |
+| `"full"`   | opt-in   | Every completed Interaction                                |
+
+Non-persist under `errors` emits `interaction_dropped` with reason `capture_mode_filter` (not a pressure shed). Pressure budgets and shedding are unchanged and take precedence when over budget. `enabled: false` remains orthogonal (credibility structural no-op).
+
+Production default is `"errors"` for lean storage. Use `"full"` for test-data collection. The credibility B harness **always pins `captureMode: "full"`** (worst case); pass `--capture-mode errors` only for headroom compare experiments, never as the CI gate profile.
+
 ## Pressure controls
 
 Optional `pressure` bounds on `attachRecorder`:
@@ -39,6 +52,7 @@ Benchmark harness compares `enabled: false` (structural no-op) vs `enabled: true
 
 ```bash
 # Pre-merge profile (10s warmup + 30s measure, enforces B, reports A)
+# Defaults to --capture-mode full (worst-case gate; do not use errors for CI B)
 pnpm --filter @epok/recorder credibility:b -- --profile premerge --out credibility-b.json
 
 # Post-merge profile (10s warmup + 120s measure)

@@ -27,7 +27,11 @@ import {
   type CellMetrics,
   type OverheadCellResult,
 } from "../dist/credibility.js";
-import { attachRecorder, type RecorderHandle } from "../dist/index.js";
+import {
+  attachRecorder,
+  type CaptureMode,
+  type RecorderHandle,
+} from "../dist/index.js";
 
 const BODY_1KB = Buffer.alloc(1024, 0x61);
 const SCENARIOS = {
@@ -58,6 +62,8 @@ interface CliOptions {
   minSamples: number;
   concurrencies: number[];
   scenarios: (keyof typeof SCENARIOS)[];
+  /** Persist intensity for enabled runs. B gate must use full (worst case). */
+  captureMode: CaptureMode;
 }
 
 interface LoadResult {
@@ -104,6 +110,11 @@ function parseArgs(argv: string[]): CliOptions {
     .map((s) => s.trim().toUpperCase())
     .filter((s): s is keyof typeof SCENARIOS => s in SCENARIOS);
 
+  const captureModeRaw = flag(argv, "--capture-mode") ?? "full";
+  if (captureModeRaw !== "full" && captureModeRaw !== "errors") {
+    throw new Error(`unknown --capture-mode ${captureModeRaw} (full|errors)`);
+  }
+
   return {
     profile,
     trials: Number(flag(argv, "--trials") ?? 3),
@@ -113,6 +124,7 @@ function parseArgs(argv: string[]): CliOptions {
     minSamples: Number(flag(argv, "--min-samples") ?? B_BAR.minSamples),
     concurrencies,
     scenarios,
+    captureMode: captureModeRaw,
   };
 }
 
@@ -234,10 +246,13 @@ async function measureMode(opts: {
   warmupMs: number;
   measureMs: number;
   enabled: boolean;
+  captureMode: CaptureMode;
 }): Promise<{ handle: RecorderHandle; metrics: CellMetrics; errors: number }> {
   const handle = attachRecorder({
     storage: fastMemoryStorage(),
     enabled: opts.enabled,
+    // B/A worst-case protocol uses explicit full; errors is for headroom compare only.
+    captureMode: opts.captureMode,
     // High queue/context ceilings so the B bar measures capture cost, not shedding.
     // Keep maxConcurrency near defaults so background finalize does not flood the event loop.
     pressure: {
@@ -271,6 +286,7 @@ async function runCell(opts: {
   measureMs: number;
   trials: number;
   minSamples: number;
+  captureMode: CaptureMode;
 }): Promise<CellReport> {
   const scenario = SCENARIOS[opts.scenario];
   const depServer = createServer((_req, res) => {
@@ -314,6 +330,7 @@ async function runCell(opts: {
         warmupMs: opts.warmupMs,
         measureMs: opts.measureMs,
         enabled: false,
+        captureMode: opts.captureMode,
       });
       baselineRun.handle.detach();
 
@@ -323,6 +340,7 @@ async function runCell(opts: {
         warmupMs: opts.warmupMs,
         measureMs: opts.measureMs,
         enabled: true,
+        captureMode: opts.captureMode,
       });
       enabledRun.handle.detach();
 
@@ -381,6 +399,7 @@ async function main(): Promise<void> {
   --min-samples N      override sample validity gate (default 10000)
   --concurrency a,b    default 50,100
   --scenarios S1,S2    default S1,S2
+  --capture-mode MODE  full (default, B-gate worst case) | errors
 
 Compare a new report to a frozen headroom baseline (no load run):
   credibility-b --compare <baseline.json> <candidate.json> [--out compare.json]`);
@@ -399,7 +418,7 @@ Compare a new report to a frozen headroom baseline (no load run):
   for (const scenario of opts.scenarios) {
     for (const concurrency of opts.concurrencies) {
       console.error(
-        `cell ${scenario} c=${concurrency} trials=${opts.trials} warmup=${opts.warmupMs}ms measure=${opts.measureMs}ms`,
+        `cell ${scenario} c=${concurrency} captureMode=${opts.captureMode} trials=${opts.trials} warmup=${opts.warmupMs}ms measure=${opts.measureMs}ms`,
       );
       const cell = await runCell({
         scenario,
@@ -408,6 +427,7 @@ Compare a new report to a frozen headroom baseline (no load run):
         measureMs: opts.measureMs,
         trials: opts.trials,
         minSamples: opts.minSamples,
+        captureMode: opts.captureMode,
       });
       cells.push(cell);
       console.error(
@@ -422,6 +442,7 @@ Compare a new report to a frozen headroom baseline (no load run):
   const report = {
     type: "credibility_b_report",
     profile: opts.profile.name,
+    captureMode: opts.captureMode,
     warmupMs: opts.warmupMs,
     measureMs: opts.measureMs,
     trialsPerCell: opts.trials,

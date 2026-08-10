@@ -91,6 +91,7 @@ describe("attachRecorder inbound body collect", () => {
     const events: RecorderWideEvent[] = [];
     handle = attachRecorder({
       storage,
+      captureMode: "full",
       onEvent: (e) => events.push(e),
     });
 
@@ -131,6 +132,7 @@ describe("attachRecorder inbound body collect", () => {
     const events: RecorderWideEvent[] = [];
     handle = attachRecorder({
       storage,
+      captureMode: "full",
       onEvent: (e) => events.push(e),
     });
 

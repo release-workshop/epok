@@ -71,6 +71,8 @@ async function main(): Promise<void> {
 
   const handle = attachRecorder({
     storage: slowStorage(PERSIST_DELAY_MS),
+    // Pressure shed proof needs finalize/persist queue load; pin full capture.
+    captureMode: "full",
     pressure: {
       maxQueueDepth: QUEUE_LIMIT,
       maxConcurrency: 1,

@@ -1,4 +1,5 @@
 import type { RecorderObservationHooks, StorageProvider } from "@epok/core";
+import { DEFAULT_CAPTURE_MODE, type CaptureMode } from "./capture-mode.js";
 import type { RecorderWideEvent } from "./events.js";
 import { installInboundAttach } from "./inbound.js";
 import { installFetchIntercept } from "./outbound.js";
@@ -11,6 +12,11 @@ import {
 import { BoundedAsyncQueue } from "./queue.js";
 
 export type { RecorderObservationHooks, StorageProvider };
+export type { CaptureMode } from "./capture-mode.js";
+export {
+  DEFAULT_CAPTURE_MODE,
+  shouldPersistInteraction,
+} from "./capture-mode.js";
 export type { RecorderWideEvent } from "./events.js";
 export type { RecorderPressureLimits } from "./pressure.js";
 export { DEFAULT_PRESSURE_LIMITS } from "./pressure.js";
@@ -37,6 +43,13 @@ export interface AttachRecorderOptions {
    * Defaults to `true`.
    */
   enabled?: boolean;
+  /**
+   * Persist intensity. Collect stays always-on when enabled.
+   * - `"errors"` (default): sanitize/finalize/persist only on inbound status
+   *   >= 500 or a terminal host exception.
+   * - `"full"`: persist every completed Interaction (test-data / credibility).
+   */
+  captureMode?: CaptureMode;
   hooks?: RecorderObservationHooks;
   /** Wide structured self-observation events (observed, drops, context failures). */
   onEvent?: (event: RecorderWideEvent) => void;
@@ -71,6 +84,7 @@ export interface RecorderHandle {
  */
 export function attachRecorder(options: AttachRecorderOptions): RecorderHandle {
   const enabled = options.enabled !== false;
+  const captureMode = options.captureMode ?? DEFAULT_CAPTURE_MODE;
   const emit: EmitWideEvent | undefined = options.onEvent
     ? (event: RecorderWideEvent): void => {
         try {
@@ -90,6 +104,7 @@ export function attachRecorder(options: AttachRecorderOptions): RecorderHandle {
 
   const restoreInbound = installInboundAttach({
     enabled,
+    captureMode,
     hooks: options.hooks,
     emit,
     storage: options.storage,

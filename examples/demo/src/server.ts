@@ -55,6 +55,8 @@ function logEvent(event: RecorderWideEvent): void {
 
 attachRecorder({
   storage,
+  // Demo/test-data path: persist successful Interactions too.
+  captureMode: "full",
   onEvent: logEvent,
 });
 
