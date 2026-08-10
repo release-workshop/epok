@@ -26,7 +26,7 @@ Options:
   --dir <path>        Filesystem Storage Provider root (default: .epok)
   --handler <path>    Handler module for replay run (required for run)
   --report <format>   text | json (default: text)
-  --mode <mode>       strict (default)
+  --mode <mode>       strict (default) | diagnostic-lenient
   --timing <mode>     instant (default)
   -h, --help          Show this help
 `;

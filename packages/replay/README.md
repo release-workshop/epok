@@ -8,7 +8,7 @@ Consumes stored **Interactions** for executable re-run, snapshot/mock fixtures, 
 - Executable re-run: re-drive the app path and inject recorded **Dependency** responses
 - Snapshot/mock: serve the same artifacts as fixtures **without** executable re-drive
 - Validate integrity / compatibility without full re-execution
-- Defaults: strict matching, instant timing
+- Defaults: strict matching (fail-fast), instant timing; `diagnostic-lenient` selectable for investigation
 
 Matching helpers live in `@epok/core` (`matchDependency` for executable; `matchSnapshotDependency` for snapshot).
 
@@ -20,6 +20,23 @@ Matching helpers live in `@epok/core` (`matchDependency` for executable; `matchS
 | **Snapshot/mock** (secondary)   | `mockReplay()`           | Materializes inbound + recorded response fixtures; `installFetch()` stubs deps with hybrid signature matching — no handler, no response compare |
 
 Both modes consume the same Interaction artifact. Choose explicitly: do not treat snapshot success as executable verification.
+
+### Mismatch policy (`mode`)
+
+| Policy                   | Behavior                                                                                                                                                                                                                                                  |
+| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **`strict`** (default)   | Fail-fast on first terminal mismatch (dependency miss, response status/body). Deterministic success only when everything matches.                                                                                                                         |
+| **`diagnostic-lenient`** | Investigation only (executable re-run): relax dependency URL to same-method unused row when strict miss; collect response status **and** body mismatches; never `ok: true` if any deviation/relaxation occurred. Snapshot/`mockReplay` stays strict-only. |
+
+```ts
+const result = await runReplay({
+  storage,
+  interactionId,
+  handler,
+  mode: "diagnostic-lenient",
+});
+// result.ok === false whenever mismatches were recorded
+```
 
 ## Usage
 

@@ -1,5 +1,9 @@
 import { type StorageProvider } from "@epok/core";
-import { installDependencyInjection, type FetchInjection } from "./inject.js";
+import {
+  installDependencyInjection,
+  type DependencyMatchMode,
+  type FetchInjection,
+} from "./inject.js";
 import { unsupportedSpecVersionMessage } from "./compat.js";
 import { buildInboundRequest, loadManifest, resolveCasBytes } from "./load.js";
 import type {
@@ -65,13 +69,19 @@ function unsupportedModes(
       mode,
     });
   }
-  if (mode !== "strict") {
-    return failure(interactionId, `unsupported mismatch mode: ${mode}`, {
-      timing,
-      mode: "strict",
-    });
-  }
   return undefined;
+}
+
+function firstMismatchMessage(
+  mismatches: readonly ReplayMismatch[],
+  fallback: string,
+): string {
+  const first = mismatches[0];
+  return first === undefined ? fallback : first.message;
+}
+
+function injectionMatching(mode: ReplayMismatchMode): DependencyMatchMode {
+  return mode === "diagnostic-lenient" ? "diagnostic-lenient" : "strict";
 }
 
 function handlerFailure(
@@ -83,17 +93,34 @@ function handlerFailure(
     mode: ReplayMismatchMode;
   },
 ): ReplayResult {
-  const mismatch = injection.takeMismatch();
-  if (mismatch) {
-    return failure(ctx.manifestId, mismatch.message, {
+  const mismatches = injection.takeMismatches();
+  const errMessage =
+    err instanceof Error ? err.message : "handler threw during replay";
+
+  if (injection.hadHardMismatch() && mismatches.length > 0) {
+    return failure(
+      ctx.manifestId,
+      firstMismatchMessage(mismatches, errMessage),
+      {
+        timing: ctx.timing,
+        mode: ctx.mode,
+        mismatches,
+      },
+    );
+  }
+
+  if (mismatches.length > 0) {
+    return failure(ctx.manifestId, errMessage, {
       timing: ctx.timing,
       mode: ctx.mode,
-      mismatches: [mismatch],
+      mismatches: [
+        ...mismatches,
+        { code: "handler_error", message: errMessage },
+      ],
     });
   }
-  const message =
-    err instanceof Error ? err.message : "handler threw during replay";
-  return failure(ctx.manifestId, message, {
+
+  return failure(ctx.manifestId, errMessage, {
     timing: ctx.timing,
     mode: ctx.mode,
   });
@@ -103,7 +130,11 @@ async function compareToRecorded(
   storage: StorageProvider,
   manifest: Awaited<ReturnType<typeof loadManifest>>,
   response: Response,
-  ctx: { timing: ReplayTimingMode; mode: ReplayMismatchMode },
+  ctx: {
+    timing: ReplayTimingMode;
+    mode: ReplayMismatchMode;
+    priorMismatches: ReplayMismatch[];
+  },
 ): Promise<ReplayResult> {
   const actualBody = new Uint8Array(await response.arrayBuffer());
   const expectedBody = await resolveCasBytes(
@@ -112,27 +143,43 @@ async function compareToRecorded(
     manifest.response.body.cas,
   );
 
+  const responseMismatches: ReplayMismatch[] = [];
+
   if (response.status !== manifest.response.status) {
     const statusMismatch: ReplayMismatch = {
       code: "response_status_mismatch",
       message: `response status ${response.status} !== recorded ${manifest.response.status}`,
     };
-    return failure(manifest.id, statusMismatch.message, {
-      timing: ctx.timing,
-      mode: ctx.mode,
-      mismatches: [statusMismatch],
-    });
+    if (ctx.mode === "strict") {
+      return failure(manifest.id, statusMismatch.message, {
+        timing: ctx.timing,
+        mode: ctx.mode,
+        mismatches: [statusMismatch],
+      });
+    }
+    responseMismatches.push(statusMismatch);
   }
 
   if (!bytesEqual(actualBody, expectedBody)) {
-    const bodyMismatch: ReplayMismatch = {
+    responseMismatches.push({
       code: "response_body_mismatch",
       message: "response body does not match recorded Interaction",
-    };
-    return failure(manifest.id, bodyMismatch.message, {
+    });
+  }
+
+  const mismatches = [...ctx.priorMismatches, ...responseMismatches];
+
+  if (mismatches.length > 0) {
+    const first = mismatches[0];
+    const message =
+      ctx.mode === "diagnostic-lenient"
+        ? `diagnostic-lenient replay found ${mismatches.length} mismatch(es)`
+        : firstMismatchMessage(mismatches, "replay mismatch");
+    return failure(manifest.id, message, {
       timing: ctx.timing,
       mode: ctx.mode,
-      mismatches: [bodyMismatch],
+      mismatches:
+        ctx.mode === "strict" && first !== undefined ? [first] : mismatches,
     });
   }
 
@@ -148,7 +195,9 @@ async function compareToRecorded(
 
 /**
  * Executable re-run: re-drive the inbound request, inject recorded dependency
- * responses (strict match, instant timing), and compare the app response.
+ * responses, and compare the app response.
+ * Defaults: strict match, instant timing. `diagnostic-lenient` continues after
+ * safe soft mismatches and never labels a run with deviations as success.
  */
 export async function runReplay(
   options: ReplayRunOptions,
@@ -168,6 +217,7 @@ export async function runReplay(
   const injection = installDependencyInjection({
     storage: options.storage,
     manifest,
+    matching: injectionMatching(mode),
   });
 
   try {
@@ -182,18 +232,34 @@ export async function runReplay(
       });
     }
 
-    const mismatch = injection.takeMismatch();
-    if (mismatch) {
-      return failure(manifest.id, mismatch.message, {
-        timing,
-        mode,
-        mismatches: [mismatch],
-      });
+    const priorMismatches = injection.takeMismatches();
+    if (injection.hadHardMismatch()) {
+      return failure(
+        manifest.id,
+        firstMismatchMessage(priorMismatches, "dependency mismatch"),
+        {
+          timing,
+          mode,
+          mismatches: priorMismatches,
+        },
+      );
+    }
+    if (mode === "strict" && priorMismatches.length > 0) {
+      return failure(
+        manifest.id,
+        firstMismatchMessage(priorMismatches, "dependency mismatch"),
+        {
+          timing,
+          mode,
+          mismatches: priorMismatches,
+        },
+      );
     }
 
     return await compareToRecorded(options.storage, manifest, response, {
       timing,
       mode,
+      priorMismatches,
     });
   } finally {
     injection.restore();

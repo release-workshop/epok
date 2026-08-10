@@ -60,11 +60,13 @@ pnpm --filter @epok/cli exec epok replay run \
 
 Useful options:
 
-| Option             | Meaning                                                      |
-| ------------------ | ------------------------------------------------------------ |
-| `--dir <path>`     | Filesystem Storage Provider root (default `.epok`)           |
-| `--handler <path>` | ESM module exporting `default` / `handler` / `handleRequest` |
-| `--report json`    | Machine-readable `ReplayResult`                              |
+| Option                      | Meaning                                                                                                     |
+| --------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `--dir <path>`              | Filesystem Storage Provider root (default `.epok`)                                                          |
+| `--handler <path>`          | ESM module exporting `default` / `handler` / `handleRequest`                                                |
+| `--report json`             | Machine-readable `ReplayResult`                                                                             |
+| `--mode strict`             | Fail-fast mismatch policy (default)                                                                         |
+| `--mode diagnostic-lenient` | Investigation: soft dependency URL match + collect response mismatches; never PASS when deviations occurred |
 
 ## Next reading
 

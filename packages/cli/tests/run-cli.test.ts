@@ -343,4 +343,61 @@ describe("runCli", () => {
     expect(parsed.dependencyCount).toBe(1);
     expect(parsed.interactionId).toBe(manifest.id);
   });
+
+  it("run --mode diagnostic-lenient reports soft dependency mismatch and exits 1", async () => {
+    const { rootDir, storage } = await makeStorageRoot();
+    const manifest = await persistFixture(storage);
+    const handlerPath = path.join(rootDir, "lenient-handler.mjs");
+    await writeFile(
+      handlerPath,
+      `export default async function handler() {
+  const dep = await fetch("https://api.example/quote-v2");
+  const payload = await dep.json();
+  return Response.json({ total: payload.quote });
+}
+`,
+    );
+
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const err = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+    const code = await runCli([
+      "node",
+      "epok",
+      "replay",
+      "run",
+      "--dir",
+      rootDir,
+      "--handler",
+      handlerPath,
+      "--mode",
+      "diagnostic-lenient",
+      "--report",
+      "json",
+      manifest.id,
+    ]);
+
+    expect(code).toBe(1);
+    const raw = String(err.mock.calls[0]?.[0] ?? log.mock.calls[0]?.[0] ?? "");
+    const parsed = JSON.parse(raw) as {
+      ok: boolean;
+      mode: string;
+      mismatches?: Array<{
+        code: string;
+        url?: string;
+        dependencySeq?: number;
+      }>;
+      message: string;
+    };
+    expect(parsed.ok).toBe(false);
+    expect(parsed.mode).toBe("diagnostic-lenient");
+    expect(parsed.message).toMatch(/diagnostic/i);
+    expect(parsed.mismatches).toEqual([
+      expect.objectContaining({
+        code: "dependency_mismatch",
+        url: "https://api.example/quote-v2",
+        dependencySeq: 1,
+      }),
+    ]);
+  });
 });

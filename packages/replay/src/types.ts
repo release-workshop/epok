@@ -4,7 +4,9 @@
 export type ReplayTimingMode = "instant" | "realtime";
 
 /**
- * Mismatch policy. MVP implements `strict` only; `diagnostic-lenient` is reserved.
+ * Mismatch policy. `strict` fail-fast (default); `diagnostic-lenient` continues
+ * after safe soft mismatches for investigation and never claims deterministic
+ * success when deviations occurred.
  */
 export type ReplayMismatchMode = "strict" | "diagnostic-lenient";
 

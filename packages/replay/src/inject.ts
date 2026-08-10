@@ -93,6 +93,39 @@ function matchUnusedDependencySnapshot(
   return unused.get(matched.seq);
 }
 
+/**
+ * Lenient: strict method+URL first; else lowest-seq unused same-method row.
+ * Soft miss returns the dependency plus an actionable diagnostic.
+ */
+function matchUnusedDependencyLenient(
+  unused: ReadonlyMap<number, Dependency>,
+  attempt: { method: string; url: string },
+): { dependency: Dependency; softMismatch?: ReplayMismatch } | undefined {
+  const strict = matchUnusedDependencyStrict(unused, attempt);
+  if (strict) return { dependency: strict };
+
+  const sameMethod = [...unused.values()]
+    .map(withUpperMethod)
+    .filter((dep) => dep.request.method === attempt.method)
+    .sort((a, b) => a.seq - b.seq);
+  const next = sameMethod[0];
+  if (next === undefined) return undefined;
+
+  const dependency = unused.get(next.seq);
+  if (!dependency) return undefined;
+
+  return {
+    dependency,
+    softMismatch: {
+      code: "dependency_mismatch",
+      message: `relaxed match for ${attempt.method} ${attempt.url} → recorded ${dependency.request.url} (seq=${dependency.seq})`,
+      method: attempt.method,
+      url: attempt.url,
+      dependencySeq: dependency.seq,
+    },
+  };
+}
+
 async function responseFromDependency(
   storage: StorageProvider,
   manifest: InteractionManifest,
@@ -126,10 +159,15 @@ async function responseFromDependency(
 
 export interface FetchInjection {
   restore: () => void;
+  /** First mismatch (strict fail-fast); prefer `takeMismatches` for lenient. */
   takeMismatch: () => ReplayMismatch | undefined;
+  /** All mismatches accumulated during injection (lenient continues after soft misses). */
+  takeMismatches: () => ReplayMismatch[];
+  /** True after a terminal dependency miss (no safe candidate to inject). */
+  hadHardMismatch: () => boolean;
 }
 
-export type DependencyMatchMode = "strict" | "snapshot";
+export type DependencyMatchMode = "strict" | "snapshot" | "diagnostic-lenient";
 
 async function attemptFromFetchArgs(
   input: RequestInfo | URL,
@@ -205,15 +243,19 @@ export function installDependencyInjection(options: {
   const unused = new Map(
     manifest.dependencies.map((dep) => [dep.seq, dep] as const),
   );
-  let mismatch: ReplayMismatch | undefined;
+  const mismatches: ReplayMismatch[] = [];
+  let hardMismatch = false;
   const previousFetch = globalThis.fetch;
 
   globalThis.fetch = async (
     input: RequestInfo | URL,
     init?: RequestInit,
   ): Promise<Response> => {
-    if (mismatch) {
-      throw new Error(`replay already mismatched: ${mismatch.message}`);
+    if (hardMismatch) {
+      const last = mismatches[mismatches.length - 1];
+      throw new Error(
+        `replay already mismatched: ${last?.message ?? "unknown"}`,
+      );
     }
 
     let dependency: Dependency | undefined;
@@ -225,6 +267,16 @@ export function installDependencyInjection(options: {
       method = attempt.method;
       url = attempt.url;
       dependency = matchUnusedDependencySnapshot(unused, attempt);
+    } else if (matching === "diagnostic-lenient") {
+      method = requestMethod(input, init);
+      url = requestUrl(input);
+      const lenient = matchUnusedDependencyLenient(unused, { method, url });
+      if (lenient) {
+        dependency = lenient.dependency;
+        if (lenient.softMismatch) {
+          mismatches.push(lenient.softMismatch);
+        }
+      }
     } else {
       method = requestMethod(input, init);
       url = requestUrl(input);
@@ -232,8 +284,10 @@ export function installDependencyInjection(options: {
     }
 
     if (!dependency) {
-      mismatch = dependencyMismatch(method, url);
-      throw new Error(mismatch.message);
+      const miss = dependencyMismatch(method, url);
+      mismatches.push(miss);
+      hardMismatch = true;
+      throw new Error(miss.message);
     }
 
     unused.delete(dependency.seq);
@@ -244,6 +298,8 @@ export function installDependencyInjection(options: {
     restore: () => {
       globalThis.fetch = previousFetch;
     },
-    takeMismatch: () => mismatch,
+    takeMismatch: () => mismatches[0],
+    takeMismatches: () => [...mismatches],
+    hadHardMismatch: () => hardMismatch,
   };
 }

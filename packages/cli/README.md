@@ -27,7 +27,8 @@ Options:
 - `--dir <path>` — filesystem Storage Provider root (default: `.epok`)
 - `--handler <path>` — required for `run`; ESM export `default`, `handler`, or `handleRequest`
 - `--report text|json` — text (default) or JSON `ReplayResult`
-- `--mode strict` / `--timing instant` — MVP defaults (other modes reserved)
+- `--mode strict|diagnostic-lenient` — mismatch policy (`strict` fail-fast default; `diagnostic-lenient` continues after safe soft mismatches and never claims deterministic success when deviations occurred)
+- `--timing instant` — MVP default (`realtime` reserved)
 
 Exit codes: `0` pass, `1` fail/mismatch, `2` usage error.
 
