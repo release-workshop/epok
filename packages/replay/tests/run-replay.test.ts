@@ -432,4 +432,61 @@ describe("runReplay", () => {
     expect(performance.now() - t0).toBeLessThan(100);
     expect(result.timingNotes).toBeUndefined();
   });
+
+  it("disambiguates identical method+URL dependencies by body signature", async () => {
+    const storage = createMemoryStorageProvider();
+    const reqA = new TextEncoder().encode(JSON.stringify({ kind: "a" }));
+    const reqB = new TextEncoder().encode(JSON.stringify({ kind: "b" }));
+    const resA = new TextEncoder().encode(JSON.stringify({ n: 1 }));
+    const resB = new TextEncoder().encode(JSON.stringify({ n: 2 }));
+    const appBody = new TextEncoder().encode(JSON.stringify({ sum: 3 }));
+
+    const manifest = await persistReplayFixtureWithDeps(storage, {
+      dependencies: [
+        {
+          seq: 1,
+          method: "POST",
+          url: "https://api.example/pay",
+          requestHeaders: [{ name: "Content-Type", value: "application/json" }],
+          requestBody: reqA,
+          responseBody: resA,
+        },
+        {
+          seq: 2,
+          method: "POST",
+          url: "https://api.example/pay",
+          requestHeaders: [{ name: "Content-Type", value: "application/json" }],
+          requestBody: reqB,
+          responseBody: resB,
+        },
+      ],
+      appResponseBody: appBody,
+    });
+
+    const result = await runReplay({
+      storage,
+      interactionId: manifest.id,
+      handler: async () => {
+        const b = (await (
+          await fetch("https://api.example/pay", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: reqB,
+          })
+        ).json()) as { n: number };
+        const a = (await (
+          await fetch("https://api.example/pay", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: reqA,
+          })
+        ).json()) as { n: number };
+        expect(b.n).toBe(2);
+        expect(a.n).toBe(1);
+        return Response.json({ sum: a.n + b.n });
+      },
+    });
+
+    expect(result.ok).toBe(true);
+  });
 });

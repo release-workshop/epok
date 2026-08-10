@@ -14,6 +14,7 @@ export type {
 
 export { runReplay } from "./run.js";
 export type { ReplayHandler, ReplayRunOptions } from "./run.js";
+export type { ReplaySecrets } from "./signatures.js";
 
 export { mockReplay } from "./mock.js";
 export type {

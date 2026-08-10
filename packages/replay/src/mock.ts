@@ -6,6 +6,10 @@ import {
   buildRecordedResponse,
   loadManifest,
 } from "./load.js";
+import {
+  applySignatureRegeneration,
+  type ReplaySecrets,
+} from "./signatures.js";
 import type {
   ReplayMismatchMode,
   ReplayResult,
@@ -17,6 +21,8 @@ export interface MockReplayOptions {
   interactionId: string;
   timing?: ReplayTimingMode;
   mode?: ReplayMismatchMode;
+  /** Local secrets for `replay.signatures[]` (RFC §7). */
+  secrets?: ReplaySecrets;
 }
 
 /** Snapshot fixtures loaded from an Interaction (no executable re-drive). */
@@ -32,6 +38,7 @@ export interface MockReplayReady {
   /** Recorded terminal application Response fixture. */
   recordedResponse: Response;
   dependencyCount: number;
+  signatureOutcomes?: ReplayResult["signatureOutcomes"];
   /**
    * Install `fetch` injection with hybrid snapshot matching.
    * Never forwards to the network. Caller must `restore()`.
@@ -89,23 +96,41 @@ export async function mockReplay(
   const unsupported = unsupportedModes(options.interactionId, timing, mode);
   if (unsupported) return unsupported;
 
-  const manifest = await loadManifest(options.storage, options.interactionId);
-  const versionError = unsupportedSpecVersionMessage(manifest.specVersion);
+  const loaded = await loadManifest(options.storage, options.interactionId);
+  const versionError = unsupportedSpecVersionMessage(loaded.specVersion);
   if (versionError) {
-    return failure(manifest.id, versionError, {
+    return failure(loaded.id, versionError, {
       timing,
       mode,
       playback: "snapshot",
     });
   }
 
+  const regenerated = await applySignatureRegeneration({
+    storage: options.storage,
+    manifest: loaded,
+    ...(options.secrets !== undefined ? { secrets: options.secrets } : {}),
+  });
+  if (!regenerated.ok) {
+    return {
+      ...failure(
+        loaded.id,
+        regenerated.outcomes.find((o) => !o.ok)?.message ??
+          "signature regeneration failed",
+        { timing, mode, playback: "snapshot" },
+      ),
+      signatureOutcomes: regenerated.outcomes,
+    };
+  }
+
+  const manifest = regenerated.manifest;
   const inbound = await buildInboundRequest(options.storage, manifest);
   const recordedResponse = await buildRecordedResponse(
     options.storage,
     manifest,
   );
 
-  return {
+  const ready: MockReplayReady = {
     ok: true,
     playback: "snapshot",
     interactionId: manifest.id,
@@ -123,4 +148,8 @@ export async function mockReplay(
         timing,
       }),
   };
+  if (regenerated.outcomes.length > 0) {
+    ready.signatureOutcomes = regenerated.outcomes;
+  }
+  return ready;
 }

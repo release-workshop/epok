@@ -49,6 +49,7 @@ export {
   matchDependency,
   matchKeyFromDependency,
   matchSnapshotDependency,
+  urlsMatchIgnoringRedactedSecrets,
 } from "./replay.js";
 export type {
   ReplayMatchKey,

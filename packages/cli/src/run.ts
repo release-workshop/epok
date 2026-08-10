@@ -28,6 +28,7 @@ Options:
   --report <format>   text | json (default: text)
   --mode <mode>       strict (default) | diagnostic-lenient
   --timing <mode>     instant (default) | realtime
+  --secret <ref=val>  Local secret for replay.signatures[] (repeatable)
   -h, --help          Show this help
 `;
 
@@ -41,10 +42,12 @@ interface ParsedArgs {
   report: ReportFormat;
   mode: ReplayMismatchMode;
   timing: ReplayTimingMode;
+  secrets: Record<string, string>;
   error: string | undefined;
 }
 
-type OptionName = "--dir" | "--handler" | "--report" | "--mode" | "--timing";
+type OptionName =
+  "--dir" | "--handler" | "--report" | "--mode" | "--timing" | "--secret";
 
 function isOptionName(arg: string): arg is OptionName {
   return (
@@ -52,7 +55,8 @@ function isOptionName(arg: string): arg is OptionName {
     arg === "--handler" ||
     arg === "--report" ||
     arg === "--mode" ||
-    arg === "--timing"
+    arg === "--timing" ||
+    arg === "--secret"
   );
 }
 
@@ -86,6 +90,19 @@ function applyOption(
       }
       state.timing = value;
       return undefined;
+    case "--secret": {
+      const eq = value.indexOf("=");
+      if (eq <= 0) {
+        return `--secret must be ref=value`;
+      }
+      const ref = value.slice(0, eq);
+      const secret = value.slice(eq + 1);
+      if (ref.length === 0) {
+        return `--secret must be ref=value`;
+      }
+      state.secrets[ref] = secret;
+      return undefined;
+    }
   }
 }
 
@@ -98,6 +115,7 @@ function parseArgs(args: readonly string[]): ParsedArgs {
     report: "text",
     mode: "strict",
     timing: "instant",
+    secrets: {},
     error: undefined,
   };
 
@@ -199,6 +217,14 @@ function printReport(
       stream(`      timing: ${note}`);
     }
   }
+  if (result.signatureOutcomes && result.signatureOutcomes.length > 0) {
+    for (const outcome of result.signatureOutcomes) {
+      const status = outcome.ok ? "ok" : "fail";
+      const detail =
+        outcome.message !== undefined ? `  ${outcome.message}` : "";
+      stream(`      signature ${status}: ${outcome.secretRef}${detail}`);
+    }
+  }
 }
 
 async function loadHandler(handlerPath: string): Promise<ReplayHandler> {
@@ -267,6 +293,7 @@ export async function runCli(argv: readonly string[]): Promise<number> {
         interactionId: parsed.interactionId,
         mode: parsed.mode,
         timing: parsed.timing,
+        secrets: parsed.secrets,
       });
       if (!ready.ok) {
         printReport(ready, parsed.report);
@@ -281,6 +308,9 @@ export async function runCli(argv: readonly string[]): Promise<number> {
         playback: ready.playback,
         dependencyCount: ready.dependencyCount,
       };
+      if (ready.signatureOutcomes !== undefined) {
+        report.signatureOutcomes = ready.signatureOutcomes;
+      }
       printReport(report, parsed.report);
       return 0;
     }
@@ -298,6 +328,7 @@ export async function runCli(argv: readonly string[]): Promise<number> {
       handler,
       mode: parsed.mode,
       timing: parsed.timing,
+      secrets: parsed.secrets,
     });
     printReport(result, parsed.report);
     return result.ok ? 0 : 1;

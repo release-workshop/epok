@@ -29,6 +29,7 @@ Options:
 - `--report text|json` — text (default) or JSON `ReplayResult`
 - `--mode strict|diagnostic-lenient` — mismatch policy (`strict` fail-fast default; `diagnostic-lenient` continues after safe soft mismatches and never claims deterministic success when deviations occurred)
 - `--timing instant|realtime` — dependency pacing (`instant` default; `realtime` approximates recorded durations / relative `endedAt`)
+- `--secret ref=value` — local secret for `replay.signatures[]` regeneration (repeatable; never from the artifact)
 
 Exit codes: `0` pass, `1` fail/mismatch, `2` usage error.
 

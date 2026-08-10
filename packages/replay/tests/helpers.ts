@@ -79,18 +79,25 @@ export async function persistReplayFixtureWithDeps(
   options: {
     id?: string;
     inboundUrl?: string;
+    inboundMethod?: string;
+    inboundBody?: Uint8Array;
+    inboundHeaders?: Array<{ name: string; value: string }>;
+    signatures?: InteractionManifest["replay"]["signatures"];
     dependencies: FixtureDependency[];
     appResponseBody?: Uint8Array;
     appResponseStatus?: number;
   },
 ): Promise<InteractionManifest> {
   const id = options.id ?? "01900000-0000-7000-8000-000000000011";
-  const inboundBody = new Uint8Array();
+  const inboundBody = options.inboundBody ?? new Uint8Array();
   const appResponseBody =
     options.appResponseBody ??
     new TextEncoder().encode(JSON.stringify({ total: 42 }));
 
-  const inboundCas = casRefFor(inboundBody, null);
+  const inboundCas = casRefFor(
+    inboundBody,
+    inboundBody.byteLength > 0 ? "application/json" : null,
+  );
   const emptyReqCas = casRefFor(new Uint8Array(), null);
   const appResCas = casRefFor(appResponseBody, "application/json");
 
@@ -157,9 +164,9 @@ export async function persistReplayFixtureWithDeps(
     },
     inbound: {
       protocol: "HTTP/1.1",
-      method: "GET",
+      method: options.inboundMethod ?? "GET",
       url: options.inboundUrl ?? "https://app.example/total",
-      headers: [],
+      headers: options.inboundHeaders ?? [],
       body: { cas: inboundCas },
     },
     dependencies,
@@ -171,7 +178,7 @@ export async function persistReplayFixtureWithDeps(
       startedAt: dependencies.length + 1,
       endedAt: dependencies.length + 2,
     },
-    replay: { signatures: [] },
+    replay: { signatures: options.signatures ?? [] },
     objects,
     integrity: {
       manifestHash: "",

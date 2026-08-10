@@ -36,7 +36,7 @@ export interface ReplayResult {
   mismatches?: ReplayMismatch[];
   /** Realtime pacing drift notes (best-effort; absent/empty for instant). */
   timingNotes?: string[];
-  /** Reserved for future signature regeneration outcomes (no secret material). */
+  /** Signature regeneration outcomes (no secret material). Absent when unused. */
   signatureOutcomes?: Array<{
     secretRef: string;
     ok: boolean;

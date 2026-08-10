@@ -1,9 +1,11 @@
 import {
   matchDependency,
   matchSnapshotDependency,
+  urlsMatchIgnoringRedactedSecrets,
   type Dependency,
   type HeaderField,
   type InteractionManifest,
+  type ReplayMatchKey,
   type StorageProvider,
 } from "@epok/core";
 import { createHash } from "node:crypto";
@@ -81,34 +83,30 @@ function withUpperMethod(dependency: Dependency): Dependency {
 }
 
 /**
- * Strict match among unused rows: method + URL, with `seq` when retries share a key.
+ * Strict match among unused rows: method + URL (MVP), richer signature fields
+ * when ambiguous, then lowest unused `seq` for identical retries.
  */
 function matchUnusedDependencyStrict(
   unused: ReadonlyMap<number, Dependency>,
-  attempt: { method: string; url: string },
+  attempt: ReplayMatchKey,
 ): Dependency | undefined {
-  const pool = [...unused.values()];
-  const normalized = pool.map(withUpperMethod);
+  const normalized = [...unused.values()].map(withUpperMethod);
+  const matched = matchDependency(normalized, attempt);
+  if (matched) return unused.get(matched.seq);
+
   const sameKey = normalized
     .filter(
       (dep) =>
         dep.request.method === attempt.method &&
-        dep.request.url === attempt.url,
+        urlsMatchIgnoringRedactedSecrets(dep.request.url, attempt.url),
     )
     .sort((a, b) => a.seq - b.seq);
-
-  if (sameKey.length === 0) return undefined;
-
   const next = sameKey[0];
   if (next === undefined) return undefined;
 
-  const matched = matchDependency(
-    normalized,
-    attempt,
-    sameKey.length > 1 ? { seq: next.seq } : undefined,
-  );
-  if (!matched) return undefined;
-  return unused.get(matched.seq);
+  const bySeq = matchDependency(normalized, attempt, { seq: next.seq });
+  if (!bySeq) return undefined;
+  return unused.get(bySeq.seq);
 }
 
 /**
@@ -272,7 +270,7 @@ type ExecutableMatch = {
 function matchExecutableAttempt(
   matching: Exclude<DependencyMatchMode, "snapshot">,
   unused: ReadonlyMap<number, Dependency>,
-  attempt: { method: string; url: string },
+  attempt: ReplayMatchKey,
 ): ExecutableMatch {
   if (matching === "diagnostic-lenient") {
     const lenient = matchUnusedDependencyLenient(unused, attempt);
@@ -332,9 +330,10 @@ export function installDependencyInjection(options: {
       url = attempt.url;
       dependency = matchUnusedDependencySnapshot(unused, attempt);
     } else {
-      method = requestMethod(input, init);
-      url = requestUrl(input);
-      const matched = matchExecutableAttempt(matching, unused, { method, url });
+      const attempt = await attemptFromFetchArgs(input, init);
+      method = attempt.method;
+      url = attempt.url;
+      const matched = matchExecutableAttempt(matching, unused, attempt);
       dependency = matched.dependency;
       if (matched.softMismatch) {
         mismatches.push(matched.softMismatch);

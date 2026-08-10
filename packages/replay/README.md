@@ -10,14 +10,14 @@ Consumes stored **Interactions** for executable re-run, snapshot/mock fixtures, 
 - Validate integrity / compatibility without full re-execution
 - Defaults: strict matching (fail-fast), instant timing; `diagnostic-lenient` selectable for investigation; `realtime` timing paces dependency completion from recorded timings
 
-Matching helpers live in `@epok/core` (`matchDependency` for executable; `matchSnapshotDependency` for snapshot).
+Matching helpers live in `@epok/core` (`matchDependency` for executable; `matchSnapshotDependency` for snapshot). Executable matching stays MVP-compatible (unique method+URL), and uses selected non-secret headers + body hash to disambiguate identical method+URL rows. Auth/cookie headers and redacted values are never match material; redacted query values are ignored when comparing URLs.
 
 ## Modes
 
-| Mode                            | API                      | What it does                                                                                                                                    |
-| ------------------------------- | ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Executable re-run** (primary) | `runReplay({ handler })` | Re-drives the inbound request through your handler, injects deps (method+URL+seq), compares the app response to the recorded Interaction        |
-| **Snapshot/mock** (secondary)   | `mockReplay()`           | Materializes inbound + recorded response fixtures; `installFetch()` stubs deps with hybrid signature matching — no handler, no response compare |
+| Mode                            | API                      | What it does                                                                                                                                                               |
+| ------------------------------- | ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Executable re-run** (primary) | `runReplay({ handler })` | Re-drives the inbound request through your handler, injects deps (method+URL, richer signature disambiguation, seq), compares the app response to the recorded Interaction |
+| **Snapshot/mock** (secondary)   | `mockReplay()`           | Materializes inbound + recorded response fixtures; `installFetch()` stubs deps with hybrid signature matching — no handler, no response compare                            |
 
 Both modes consume the same Interaction artifact. Choose explicitly: do not treat snapshot success as executable verification.
 
@@ -55,7 +55,29 @@ const result = await runReplay({
 // result.ok === false whenever mismatches were recorded
 ```
 
-## Usage
+### Signature regeneration (`secrets`)
+
+When an Interaction carries `replay.signatures[]`, replay regenerates those fields from **local** secrets before the handler / fixtures run (RFC §7). Secrets are never read from the artifact.
+
+Supported in v1:
+
+- Algorithms: `hmac-sha256` (hex digest)
+- Payload paths: `inbound.body`, `dependencies[N].request.body`
+- Target paths: `inbound.headers.<Name>`, `dependencies[N].request.headers.<Name>`
+
+```ts
+const result = await runReplay({
+  storage,
+  interactionId,
+  handler,
+  secrets: { "payments.webhook.secret": process.env.WEBHOOK_SECRET! },
+});
+// result.signatureOutcomes — ok/fail per secretRef (no secret material)
+```
+
+CLI: `--secret ref=value` (repeatable).
+
+`ReplayResult` may include `timingNotes` when realtime pacing drifts, and `signatureOutcomes` when signature regeneration ran.
 
 ### Executable re-run
 
@@ -98,8 +120,6 @@ try {
 }
 // ready.playback === "snapshot"
 ```
-
-`ReplayResult` may include `timingNotes` when realtime pacing drifts, and reserved `signatureOutcomes` for later signature regeneration.
 
 ## Install
 

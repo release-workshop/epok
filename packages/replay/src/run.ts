@@ -2,6 +2,10 @@ import { type StorageProvider } from "@epok/core";
 import { installDependencyInjection, type FetchInjection } from "./inject.js";
 import { unsupportedSpecVersionMessage } from "./compat.js";
 import { buildInboundRequest, loadManifest, resolveCasBytes } from "./load.js";
+import {
+  applySignatureRegeneration,
+  type ReplaySecrets,
+} from "./signatures.js";
 import type {
   ReplayMismatch,
   ReplayMismatchMode,
@@ -19,6 +23,11 @@ export interface ReplayRunOptions {
   handler: ReplayHandler;
   timing?: ReplayTimingMode;
   mode?: ReplayMismatchMode;
+  /**
+   * Local secrets keyed by Interaction `replay.signatures[].secretRef`.
+   * Never read from the artifact (RFC §7).
+   */
+  secrets?: ReplaySecrets;
 }
 
 function bytesEqual(a: Uint8Array, b: Uint8Array): boolean {
@@ -210,12 +219,71 @@ async function compareToRecorded(
   });
 }
 
+function withSignatureOutcomes(
+  result: ReplayResult,
+  signatureOutcomes: ReplayResult["signatureOutcomes"],
+): ReplayResult {
+  if (signatureOutcomes === undefined || signatureOutcomes.length === 0) {
+    return result;
+  }
+  return { ...result, signatureOutcomes };
+}
+
+async function prepareExecutableManifest(
+  options: ReplayRunOptions,
+  timing: ReplayTimingMode,
+  mode: ReplayMismatchMode,
+): Promise<
+  | {
+      ok: true;
+      manifest: Awaited<ReturnType<typeof loadManifest>>;
+      outcomes: ReplayResult["signatureOutcomes"];
+    }
+  | { ok: false; result: ReplayResult }
+> {
+  const loaded = await loadManifest(options.storage, options.interactionId);
+  const versionError = unsupportedSpecVersionMessage(loaded.specVersion);
+  if (versionError) {
+    return {
+      ok: false,
+      result: failure(loaded.id, versionError, { timing, mode }),
+    };
+  }
+
+  const regenerated = await applySignatureRegeneration({
+    storage: options.storage,
+    manifest: loaded,
+    ...(options.secrets !== undefined ? { secrets: options.secrets } : {}),
+  });
+  if (!regenerated.ok) {
+    return {
+      ok: false,
+      result: withSignatureOutcomes(
+        failure(
+          loaded.id,
+          regenerated.outcomes.find((o) => !o.ok)?.message ??
+            "signature regeneration failed",
+          { timing, mode },
+        ),
+        regenerated.outcomes,
+      ),
+    };
+  }
+  return {
+    ok: true,
+    manifest: regenerated.manifest,
+    outcomes: regenerated.outcomes,
+  };
+}
+
 /**
  * Executable re-run: re-drive the inbound request, inject recorded dependency
  * responses, and compare the app response.
  * Defaults: strict match, instant timing. `diagnostic-lenient` continues after
  * safe soft mismatches and never labels a run with deviations as success.
  * `realtime` paces dependency completion from recorded timings (RFC §6).
+ * When `replay.signatures[]` is present, regenerates values from local
+ * `secrets` before the handler runs (RFC §7).
  */
 export async function runReplay(
   options: ReplayRunOptions,
@@ -223,12 +291,10 @@ export async function runReplay(
   const timing: ReplayTimingMode = options.timing ?? "instant";
   const mode: ReplayMismatchMode = options.mode ?? "strict";
 
-  const manifest = await loadManifest(options.storage, options.interactionId);
-  const versionError = unsupportedSpecVersionMessage(manifest.specVersion);
-  if (versionError) {
-    return failure(manifest.id, versionError, { timing, mode });
-  }
+  const prepared = await prepareExecutableManifest(options, timing, mode);
+  if (!prepared.ok) return prepared.result;
 
+  const { manifest, outcomes } = prepared;
   const request = await buildInboundRequest(options.storage, manifest);
   const injection = installDependencyInjection({
     storage: options.storage,
@@ -242,27 +308,33 @@ export async function runReplay(
     try {
       response = await options.handler(request);
     } catch (err) {
-      return handlerFailure(err, injection, {
-        manifestId: manifest.id,
-        timing,
-        mode,
-      });
+      return withSignatureOutcomes(
+        handlerFailure(err, injection, {
+          manifestId: manifest.id,
+          timing,
+          mode,
+        }),
+        outcomes,
+      );
     }
 
     const priorMismatches = injection.takeMismatches();
     const timingNotes = injection.takeTimingNotes();
     if (injection.hadHardMismatch()) {
-      return withTimingNotes(
-        failure(
-          manifest.id,
-          firstMismatchMessage(priorMismatches, "dependency mismatch"),
-          {
-            timing,
-            mode,
-            mismatches: priorMismatches,
-          },
+      return withSignatureOutcomes(
+        withTimingNotes(
+          failure(
+            manifest.id,
+            firstMismatchMessage(priorMismatches, "dependency mismatch"),
+            {
+              timing,
+              mode,
+              mismatches: priorMismatches,
+            },
+          ),
+          timingNotes,
         ),
-        timingNotes,
+        outcomes,
       );
     }
 
@@ -276,7 +348,10 @@ export async function runReplay(
         priorMismatches,
       },
     );
-    return withTimingNotes(compared, timingNotes);
+    return withSignatureOutcomes(
+      withTimingNotes(compared, timingNotes),
+      outcomes,
+    );
   } finally {
     injection.restore();
   }
