@@ -7,6 +7,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./workers": {
+      "types": "./dist/workers.d.ts",
+      "import": "./dist/workers.js"
     }
   },
   "files": [
@@ -20,6 +24,10 @@
   },
   "dependencies": {
     "@epok/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@epok/replay": "workspace:*",
+    "@epok/storage-memory": "workspace:*"
   },
   "engines": {
     "node": ">=22"

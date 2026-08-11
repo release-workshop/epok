@@ -1,0 +1,126 @@
+import type { CaptureMode } from "./capture-mode.js";
+import type { RuntimeIdentity } from "@epok/core";
+import {
+  beginBodyRead,
+  endBodyRead,
+  headersToFields,
+  takeCapturedBytes,
+  teeFetchResponseBody,
+  type CaptureBuffers,
+} from "./capture.js";
+import type { ObservedCapture } from "./finalize.js";
+import type { PressureController } from "./pressure.js";
+
+export function expectsFetchInboundBody(request: Request): boolean {
+  const method = request.method.toUpperCase();
+  if (method === "POST" || method === "PUT" || method === "PATCH") {
+    return true;
+  }
+  const length = request.headers.get("content-length");
+  if (length !== null && Number(length) > 0) return true;
+  return request.headers.has("transfer-encoding");
+}
+
+/** Read inbound body from a clone without consuming the app-visible request. */
+export function readFetchInboundBody(
+  request: Request,
+  buf: CaptureBuffers,
+  pressure: PressureController,
+): void {
+  if (!expectsFetchInboundBody(request)) return;
+  beginBodyRead(buf);
+  void (async () => {
+    try {
+      const body = request.body;
+      if (!body) {
+        buf.inboundBody = new Uint8Array();
+        return;
+      }
+      const bytes = new Uint8Array(await request.clone().arrayBuffer());
+      buf.inboundBody = takeCapturedBytes(pressure, buf, bytes);
+    } catch {
+      // Fail-open.
+    } finally {
+      endBodyRead(buf);
+    }
+  })();
+}
+
+/** Tee response body for capture; returns the app-visible Response. */
+export function captureFetchResponse(
+  response: Response,
+  buf: CaptureBuffers,
+  pressure: PressureController,
+): Response {
+  beginBodyRead(buf);
+  const teed = teeFetchResponseBody(response);
+  buf.statusCode = response.status;
+  buf.statusText = response.statusText;
+  buf.responseHeaders = headersToFields(response.headers);
+  if (buf.responseStartedAt === 0) {
+    buf.responseStartedAt = performance.now() - buf.startedAt;
+  }
+
+  void (async () => {
+    try {
+      const body = await teed.captureBody;
+      buf.responseBody = takeCapturedBytes(pressure, buf, body);
+      buf.responseEndedAt = performance.now() - buf.startedAt;
+    } catch {
+      // Fail-open.
+    } finally {
+      endBodyRead(buf);
+    }
+  })();
+
+  return teed.response;
+}
+
+export function buildObservedCaptureFromFetch(
+  interactionId: string,
+  request: Request,
+  response: Response | null,
+  buf: CaptureBuffers,
+  captureMode?: CaptureMode,
+  runtime?: RuntimeIdentity,
+): ObservedCapture {
+  const inbound = {
+    protocol: "HTTP/1.1",
+    method: request.method,
+    url: request.url,
+    headers: headersToFields(request.headers),
+    body: buf.inboundBody,
+    contentType: request.headers.get("content-type"),
+  };
+
+  const responseMessage: ObservedCapture["response"] = {
+    protocol: "HTTP/1.1",
+    status: response?.status ?? buf.statusCode,
+    headers: buf.responseHeaders,
+    body: buf.responseBody,
+    contentType:
+      buf.responseHeaders.find((h) => h.name.toLowerCase() === "content-type")
+        ?.value ??
+      response?.headers.get("content-type") ??
+      null,
+    startedAt: Math.max(0, Math.round(buf.responseStartedAt)),
+    endedAt: Math.max(
+      Math.round(buf.responseStartedAt),
+      Math.round(buf.responseEndedAt),
+    ),
+  };
+  const statusText = buf.statusText || response?.statusText;
+  if (statusText) {
+    responseMessage.statusText = statusText;
+  }
+
+  return {
+    id: interactionId,
+    capturedAt: new Date().toISOString(),
+    inbound,
+    dependencies: buf.dependencies,
+    response: responseMessage,
+    ...(captureMode !== undefined ? { captureMode } : {}),
+    ...(runtime !== undefined ? { runtime } : {}),
+  };
+}

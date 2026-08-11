@@ -79,6 +79,13 @@ importers:
       '@epok/core':
         specifier: workspace:*
         version: link:../core
+    devDependencies:
+      '@epok/replay':
+        specifier: workspace:*
+        version: link:../replay
+      '@epok/storage-memory':
+        specifier: workspace:*
+        version: link:../storage-memory
 
   packages/replay:
     dependencies:
