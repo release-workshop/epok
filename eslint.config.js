@@ -12,6 +12,8 @@ export default tseslint.config(
       "lint-staged.config.js",
       // Harness scripts run via node --experimental-strip-types, not package builds.
       "packages/*/harness/**",
+      // Bun-native smoke test uses bun:test; run via `pnpm --filter @epok/recorder test:bun`.
+      "packages/recorder/tests/bun-runtime-native.test.ts",
     ],
   },
   eslint.configs.recommended,
