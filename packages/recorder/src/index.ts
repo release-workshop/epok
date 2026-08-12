@@ -12,8 +12,8 @@ import { BoundedAsyncQueue } from "./queue.js";
 import { snapshotRecorderStats, type RecorderStats } from "./stats.js";
 import {
   createWideEventEmit,
-  DEFAULT_ON_EVENT_CATEGORIES,
-  type OnEventCategories,
+  DEFAULT_ON_EVENT_CATEGORY,
+  type OnEventCategory,
 } from "./wide-event-emit.js";
 
 export type { RecorderObservationHooks, StorageProvider };
@@ -23,7 +23,7 @@ export {
   shouldPersistInteraction,
 } from "./capture-mode.js";
 export type { RecorderWideEvent } from "./events.js";
-export type { OnEventCategories } from "./wide-event-emit.js";
+export type { OnEventCategory } from "./wide-event-emit.js";
 export type { RecorderPressureLimits } from "./pressure.js";
 export { DEFAULT_PRESSURE_LIMITS } from "./pressure.js";
 export type { RecorderStats } from "./stats.js";
@@ -68,11 +68,11 @@ export interface AttachRecorderOptions {
   /** Wide structured self-observation events (opt-in; advanced / harness path). */
   onEvent?: (event: RecorderWideEvent) => void;
   /**
-   * Wide-event category filter when `onEvent` is set.
-   * - `"pressure"` (default): queue/shed/drop/elide/finalize/persist/`observation_dropped`
-   * - `"all"`: pressure set plus per-request `observed` and `context_missing`
+   * Wide-event category when `onEvent` is set.
+   * - `"ops"` (default): queue/shed/drop/elide/finalize/persist/`observation_dropped`
+   * - `"all"`: ops set plus per-request `observed` and `context_missing`
    */
-  onEventCategories?: OnEventCategories;
+  onEventCategory?: OnEventCategory;
   /**
    * Upper bounds for async sanitize/finalize/persist work and capture buffers.
    * Byte-budget pressure elides bodies by default; queue/context pressure still
@@ -104,7 +104,7 @@ export function attachRecorder(options: AttachRecorderOptions): RecorderHandle {
   const captureMode = options.captureMode ?? DEFAULT_CAPTURE_MODE;
   const emit = createWideEventEmit(
     options.onEvent,
-    options.onEventCategories ?? DEFAULT_ON_EVENT_CATEGORIES,
+    options.onEventCategory ?? DEFAULT_ON_EVENT_CATEGORY,
   );
 
   const limits: RecorderPressureLimits = {

@@ -13,14 +13,14 @@ describe("createWideEventEmit", () => {
     expect(createWideEventEmit(undefined)).toBeUndefined();
   });
 
-  it("skips constructing filtered chatter under pressure via includes()", () => {
-    const pressure = createWideEventEmit(() => {
+  it("skips constructing filtered chatter under ops via includes()", () => {
+    const ops = createWideEventEmit(() => {
       /* unused */
-    }, "pressure");
-    expect(pressure?.includes("observed")).toBe(false);
-    expect(pressure?.includes("context_missing")).toBe(false);
-    expect(pressure?.includes("interaction_dropped")).toBe(true);
-    expect(pressure?.includes("body_elided")).toBe(true);
+    }, "ops");
+    expect(ops?.includes("observed")).toBe(false);
+    expect(ops?.includes("context_missing")).toBe(false);
+    expect(ops?.includes("interaction_dropped")).toBe(true);
+    expect(ops?.includes("body_elided")).toBe(true);
 
     const all = createWideEventEmit(() => {
       /* unused */
@@ -33,7 +33,7 @@ describe("createWideEventEmit", () => {
     const delivered: RecorderWideEvent["type"][] = [];
     const emit = createWideEventEmit((event) => {
       delivered.push(event.type);
-    }, "pressure");
+    }, "ops");
 
     emit?.({
       type: "observed",
@@ -52,7 +52,7 @@ describe("createWideEventEmit", () => {
   });
 });
 
-describe("wide-event categories + subscriber gate", () => {
+describe("wide-event category + subscriber gate", () => {
   let handle: RecorderHandle | undefined;
   let server: Server | undefined;
   let dependencyServer: Server | undefined;
@@ -67,7 +67,7 @@ describe("wide-event categories + subscriber gate", () => {
     dependencyServer = undefined;
   });
 
-  it("defaults onEvent to pressure category (no observed / context_missing chatter)", async () => {
+  it("defaults onEvent to ops category (no observed / context_missing chatter)", async () => {
     const events: RecorderWideEvent[] = [];
     handle = attachRecorder({
       storage: unusedStorage(),
@@ -101,11 +101,11 @@ describe("wide-event categories + subscriber gate", () => {
     expect(handle.stats().observed).toBeGreaterThan(0);
   });
 
-  it("delivers observed and context_missing when onEventCategories is all", async () => {
+  it("delivers observed and context_missing when onEventCategory is all", async () => {
     const events: RecorderWideEvent[] = [];
     handle = attachRecorder({
       storage: unusedStorage(),
-      onEventCategories: "all",
+      onEventCategory: "all",
       onEvent: (event) => {
         events.push(event);
       },
@@ -143,7 +143,7 @@ describe("wide-event categories + subscriber gate", () => {
     ).toBe(true);
   });
 
-  it("still delivers pressure events under the default category", async () => {
+  it("still delivers ops events under the default category", async () => {
     const events: RecorderWideEvent[] = [];
     handle = attachRecorder({
       storage: {
@@ -220,7 +220,7 @@ describe("wide-event categories + subscriber gate", () => {
     handle.detach();
     handle = attachRecorder({
       storage: unusedStorage(),
-      onEventCategories: "all",
+      onEventCategory: "all",
       hooks: {
         onInbound() {
           throw new Error("inbound hook boom");

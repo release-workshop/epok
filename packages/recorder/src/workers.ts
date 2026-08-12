@@ -30,14 +30,14 @@ import {
 } from "./capture.js";
 import {
   createWideEventEmit,
-  DEFAULT_ON_EVENT_CATEGORIES,
-  type OnEventCategories,
+  DEFAULT_ON_EVENT_CATEGORY,
+  type OnEventCategory,
 } from "./wide-event-emit.js";
 
 export type { RecorderObservationHooks, StorageProvider };
 export type { CaptureMode } from "./capture-mode.js";
 export type { RecorderWideEvent } from "./events.js";
-export type { OnEventCategories } from "./wide-event-emit.js";
+export type { OnEventCategory } from "./wide-event-emit.js";
 export type { RecorderPressureLimits } from "./pressure.js";
 export type { RecorderStats } from "./stats.js";
 export { startStatsExporter, statsCounterDeltas } from "./stats-exporter.js";
@@ -60,10 +60,10 @@ export interface AttachWorkersRecorderOptions {
   hooks?: RecorderObservationHooks;
   onEvent?: (event: RecorderWideEvent) => void;
   /**
-   * Wide-event category filter when `onEvent` is set.
-   * Defaults to `"pressure"` (no per-request `observed` / `context_missing`).
+   * Wide-event category when `onEvent` is set.
+   * Defaults to `"ops"` (no per-request `observed` / `context_missing`).
    */
-  onEventCategories?: OnEventCategories;
+  onEventCategory?: OnEventCategory;
   pressure?: Partial<RecorderPressureLimits>;
   /** Override runtime identity stamped on recorded Interactions. */
   runtime?: { name: string; version: string };
@@ -101,7 +101,7 @@ export function attachWorkersRecorder(
   const runtime = options.runtime ?? DEFAULT_WORKERS_RUNTIME;
   const emit = createWideEventEmit(
     options.onEvent,
-    options.onEventCategories ?? DEFAULT_ON_EVENT_CATEGORIES,
+    options.onEventCategory ?? DEFAULT_ON_EVENT_CATEGORY,
   );
 
   const limits: RecorderPressureLimits = {

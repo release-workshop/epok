@@ -1,13 +1,17 @@
 import type { RecorderWideEvent } from "./events.js";
 import type { EmitWideEvent } from "./observe.js";
 
-/** Opt-in wide-event verbosity when `onEvent` is set. Locked by issue 33. */
-export type OnEventCategories = "pressure" | "all";
+/**
+ * Opt-in wide-event verbosity when `onEvent` is set.
+ * - `"ops"`: queue/shed/drop/elide/finalize/persist/`observation_dropped`
+ * - `"all"`: ops set plus per-request `observed` / `context_missing`
+ */
+export type OnEventCategory = "ops" | "all";
 
-/** Default when `onEvent` is configured — shed/queue/lifecycle, no observe chatter. */
-export const DEFAULT_ON_EVENT_CATEGORIES: OnEventCategories = "pressure";
+/** Default when `onEvent` is configured — ops signals, no observe chatter. */
+export const DEFAULT_ON_EVENT_CATEGORY: OnEventCategory = "ops";
 
-const PRESSURE_EVENT_TYPES = new Set<RecorderWideEvent["type"]>([
+const OPS_EVENT_TYPES = new Set<RecorderWideEvent["type"]>([
   "queue_depth",
   "shedding",
   "interaction_dropped",
@@ -19,10 +23,10 @@ const PRESSURE_EVENT_TYPES = new Set<RecorderWideEvent["type"]>([
 
 function includesType(
   type: RecorderWideEvent["type"],
-  categories: OnEventCategories,
+  category: OnEventCategory,
 ): boolean {
-  if (categories === "all") return true;
-  return PRESSURE_EVENT_TYPES.has(type);
+  if (category === "all") return true;
+  return OPS_EVENT_TYPES.has(type);
 }
 
 /**
@@ -32,12 +36,12 @@ function includesType(
  */
 export function createWideEventEmit(
   onEvent: ((event: RecorderWideEvent) => void) | undefined,
-  categories: OnEventCategories = DEFAULT_ON_EVENT_CATEGORIES,
+  category: OnEventCategory = DEFAULT_ON_EVENT_CATEGORY,
 ): EmitWideEvent | undefined {
   if (!onEvent) return undefined;
 
   const emit = ((event: RecorderWideEvent): void => {
-    if (!includesType(event.type, categories)) return;
+    if (!includesType(event.type, category)) return;
     try {
       onEvent(event);
     } catch {
@@ -45,6 +49,6 @@ export function createWideEventEmit(
     }
   }) as EmitWideEvent;
 
-  emit.includes = (type) => includesType(type, categories);
+  emit.includes = (type) => includesType(type, category);
   return emit;
 }
