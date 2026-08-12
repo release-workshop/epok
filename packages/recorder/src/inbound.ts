@@ -9,6 +9,7 @@ import {
   installInboundBodyCapture,
   installResponseCapture,
   releaseCaptureBytes,
+  skipOrElideBodies,
   waitForBodyReads,
   type CaptureBuffers,
 } from "./capture.js";
@@ -87,7 +88,9 @@ export function installInboundAttach(deps: InboundAttachDeps): () => void {
       }
       try {
         if (expectsInboundBody(req)) {
-          installInboundBodyCapture(req, buf, pressure);
+          if (!skipOrElideBodies(pressure, buf)) {
+            installInboundBodyCapture(req, buf, pressure);
+          }
         }
         installResponseCapture(res, buf, pressure);
       } catch {

@@ -109,6 +109,51 @@ describe("attachWorkersRecorder", () => {
       ),
     ).toBe(true);
   });
+
+  it("elides Fetch-handler bodies under byte-budget pressure without failing the host", async () => {
+    const storage = createMemoryStorageProvider();
+    const events: RecorderWideEvent[] = [];
+    handle = attachWorkersRecorder({
+      storage,
+      captureMode: "full",
+      pressure: {
+        maxQueueDepth: 32,
+        maxConcurrency: 2,
+        maxActiveContexts: 32,
+        maxBufferedBytes: 16,
+      },
+      onEvent: (event) => {
+        events.push(event);
+      },
+    });
+
+    const payload = "w".repeat(64);
+    const appHandler = handle.wrapHandler(
+      async () =>
+        new Response(payload, {
+          status: 200,
+          headers: { "content-type": "text/plain" },
+        }),
+    );
+    const response = await appHandler(new Request("http://127.0.0.1/"));
+    expect(response.status).toBe(200);
+    expect(await response.text()).toBe(payload);
+
+    await handle.drain(2_000);
+
+    expect(handle.pressureStats().dropped).toBe(0);
+    expect(events.some((e) => e.type === "body_elided")).toBe(true);
+    const persisted = events.filter((e) => e.type === "interaction_persisted");
+    expect(persisted).toHaveLength(1);
+    const interactionId = persisted[0]?.interactionId;
+    expect(interactionId).toBeDefined();
+    if (interactionId === undefined) return;
+    const manifestBytes = await storage.getManifest(interactionId);
+    const manifest = JSON.parse(
+      new TextDecoder().decode(manifestBytes),
+    ) as InteractionManifest;
+    expect(manifest.response.body.cas.size).toBe(0);
+  });
 });
 
 function listen(s: Server): Promise<void> {

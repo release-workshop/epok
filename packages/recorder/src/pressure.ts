@@ -10,6 +10,12 @@ export interface RecorderPressureLimits {
   maxActiveContexts: number;
   /** Max buffered body bytes across active captures + pending queue jobs. */
   maxBufferedBytes: number;
+  /**
+   * When true (default), byte-budget pressure elides captured bodies and still
+   * persists the Interaction. When false, the Interaction is dropped
+   * (`buffered_bytes_budget`) as in the original shed path.
+   */
+  bodyElision: boolean;
 }
 
 export const DEFAULT_PRESSURE_LIMITS: RecorderPressureLimits = {
@@ -17,6 +23,7 @@ export const DEFAULT_PRESSURE_LIMITS: RecorderPressureLimits = {
   maxConcurrency: 2,
   maxActiveContexts: 256,
   maxBufferedBytes: 16 * 1024 * 1024,
+  bodyElision: true,
 };
 
 export type PressureDropReason =
@@ -130,6 +137,28 @@ export class PressureController {
     } else {
       this.maybeDeactivateShedding();
     }
+  }
+
+  /** True when reserving `bytes` would exceed the buffered-bytes budget. */
+  wouldExceedByteBudget(bytes: number): boolean {
+    if (bytes <= 0) return false;
+    return this._bufferedBytes + bytes > this.limits.maxBufferedBytes;
+  }
+
+  /** True when new body capture should be skipped to stay under the byte budget. */
+  get shouldElideBodies(): boolean {
+    return (
+      this.limits.bodyElision &&
+      this._bufferedBytes >= this.limits.maxBufferedBytes
+    );
+  }
+
+  recordBodyElision(releasedBytes: number): void {
+    this.emit?.({
+      type: "body_elided",
+      reason: "buffered_bytes_budget",
+      releasedBytes,
+    });
   }
 
   recordDrop(reason: PressureDropReason, interactionId: string): void {

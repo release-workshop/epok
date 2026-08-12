@@ -55,7 +55,8 @@ export interface AttachRecorderOptions {
   onEvent?: (event: RecorderWideEvent) => void;
   /**
    * Upper bounds for async sanitize/finalize/persist work and capture buffers.
-   * When exceeded, Interactions are dropped deterministically (fail-open for the host).
+   * Byte-budget pressure elides bodies by default; queue/context pressure still
+   * drops Interactions deterministically (fail-open for the host).
    */
   pressure?: Partial<RecorderPressureLimits>;
 }

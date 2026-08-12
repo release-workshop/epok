@@ -4,6 +4,7 @@ import {
   endBodyRead,
   headersToFields,
   readBufferedBodyInit,
+  skipOrElideContentLength,
   takeCapturedBytes,
   teeFetchResponseBody,
   type CaptureBuffers,
@@ -56,6 +57,16 @@ export function installFetchIntercept(
     observeDependency(ctx, input, init, response, hooks, emit);
 
     if (ctx?.capture && !ctx.capture.dropped) {
+      if (skipOrElideContentLength(pressure, ctx.capture, response.headers)) {
+        recordDependencyWithoutBodies(
+          ctx.capture,
+          input,
+          init,
+          response,
+          startedAt,
+        );
+        return response;
+      }
       return scheduleDependencyCapture(
         ctx.capture,
         input,
@@ -162,6 +173,60 @@ async function readOutboundRequestBody(
     return takeCapturedBytes(pressure, buf, bytes);
   } catch {
     return new Uint8Array();
+  }
+}
+
+function recordDependencyWithoutBodies(
+  buf: CaptureBuffers,
+  input: RequestInfo | URL,
+  init: RequestInit | undefined,
+  response: Response,
+  startedAt: number,
+): void {
+  const seq = buf.dependencies.length + 1;
+  const started = Math.max(0, Math.round(startedAt));
+  const endedAt = Math.max(
+    started,
+    Math.round(performance.now() - buf.startedAt),
+  );
+  const emptyResponse = {
+    protocol: "HTTP/1.1",
+    status: response.status,
+    statusText: response.statusText,
+    headers: headersToFields(response.headers),
+    body: new Uint8Array(),
+    contentType: response.headers.get("content-type"),
+  };
+  try {
+    const request = new Request(input, init);
+    buf.dependencies.push({
+      seq,
+      startedAt: started,
+      endedAt,
+      request: {
+        protocol: "HTTP/1.1",
+        method: request.method,
+        url: request.url,
+        headers: headersToFields(request.headers),
+        body: new Uint8Array(),
+        contentType: request.headers.get("content-type"),
+      },
+      response: emptyResponse,
+    });
+  } catch {
+    buf.dependencies.push({
+      seq,
+      startedAt: started,
+      endedAt,
+      request: {
+        protocol: "HTTP/1.1",
+        method: "GET",
+        url: "",
+        headers: [],
+        body: new Uint8Array(),
+      },
+      response: emptyResponse,
+    });
   }
 }
 

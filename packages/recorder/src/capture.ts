@@ -24,6 +24,8 @@ export interface CaptureBuffers {
   reservedBytes: number;
   dropped: boolean;
   dropReason?: string;
+  /** Bodies were discarded under byte-budget pressure; persist metadata only. */
+  bodiesElided: boolean;
   /** Uncaught/terminal host failure (destroy/errored/sync throw). */
   terminalHostError: boolean;
   bodyWaiters: Array<() => void>;
@@ -48,6 +50,7 @@ export function createCaptureBuffers(): CaptureBuffers {
     pendingBodyReads: 0,
     reservedBytes: 0,
     dropped: false,
+    bodiesElided: false,
     terminalHostError: false,
     bodyWaiters: [],
   };
@@ -141,16 +144,100 @@ export function waitForBodyReads(buf: CaptureBuffers): Promise<void> {
 }
 
 /**
- * Reserve buffered bytes under the global budget. On failure marks the
- * Interaction dropped so enqueue will shed it.
+ * Discard captured bodies and release their reserved bytes. The Interaction
+ * stays eligible to persist with empty CAS bodies.
+ */
+function elideCaptureBodies(
+  pressure: PressureController,
+  buf: CaptureBuffers,
+): void {
+  if (buf.dropped || buf.bodiesElided) return;
+  buf.bodiesElided = true;
+  buf.inboundBody = new Uint8Array();
+  buf.responseBody = new Uint8Array();
+  for (const dep of buf.dependencies) {
+    dep.request.body = new Uint8Array();
+    if (dep.response) {
+      dep.response.body = new Uint8Array();
+    }
+  }
+  const released = buf.reservedBytes;
+  releaseCaptureBytes(pressure, buf);
+  pressure.recordBodyElision(released);
+}
+
+/** Skip body capture when this Interaction already elided or the byte budget is exhausted. */
+function shouldSkipBodyCapture(
+  pressure: PressureController,
+  buf: CaptureBuffers,
+): boolean {
+  return buf.dropped || buf.bodiesElided || pressure.shouldElideBodies;
+}
+
+/** Elide if skip is already required. Returns true when body capture should stop. */
+export function skipOrElideBodies(
+  pressure: PressureController,
+  buf: CaptureBuffers,
+): boolean {
+  if (!shouldSkipBodyCapture(pressure, buf)) return false;
+  elideCaptureBodies(pressure, buf);
+  return true;
+}
+
+/**
+ * Elide before pulling a body whose known size would exceed the byte budget.
+ * Returns true when the caller should skip expensive body work.
+ */
+function skipOrElideKnownSize(
+  pressure: PressureController,
+  buf: CaptureBuffers,
+  byteLength: number,
+): boolean {
+  if (skipOrElideBodies(pressure, buf)) return true;
+  if (
+    pressure.limits.bodyElision &&
+    pressure.wouldExceedByteBudget(byteLength)
+  ) {
+    elideCaptureBodies(pressure, buf);
+    return true;
+  }
+  return false;
+}
+
+function contentLengthBytes(headers: Headers): number | undefined {
+  const raw = headers.get("content-length");
+  if (raw === null || raw === "") return undefined;
+  const length = Number(raw);
+  if (!Number.isFinite(length) || length < 0) return undefined;
+  return length;
+}
+
+/** Skip body work when Content-Length is known to exceed the remaining budget. */
+export function skipOrElideContentLength(
+  pressure: PressureController,
+  buf: CaptureBuffers,
+  headers: Headers,
+): boolean {
+  const length = contentLengthBytes(headers);
+  if (length === undefined) return skipOrElideBodies(pressure, buf);
+  return skipOrElideKnownSize(pressure, buf, length);
+}
+
+/**
+ * Reserve buffered bytes under the global budget. On failure, elide bodies
+ * (default) or mark the Interaction dropped when body elision is disabled.
  */
 export function reserveCaptureBytes(
   pressure: PressureController,
   buf: CaptureBuffers,
   bytes: number,
 ): boolean {
-  if (buf.dropped) return false;
+  if (buf.dropped || buf.bodiesElided) return false;
   if (!pressure.tryReserveBytes(bytes)) {
+    if (pressure.limits.bodyElision) {
+      elideCaptureBodies(pressure, buf);
+      return false;
+    }
     markDropped(buf, "buffered_bytes_budget");
     return false;
   }
@@ -165,6 +252,23 @@ export function releaseCaptureBytes(
   if (buf.reservedBytes <= 0) return;
   pressure.releaseBytes(buf.reservedBytes);
   buf.reservedBytes = 0;
+}
+
+function tryCaptureChunk(
+  sink: {
+    buf: CaptureBuffers;
+    pressure: PressureController;
+    chunks: Buffer[];
+  },
+  chunk: unknown,
+  encoding?: BufferEncoding,
+): void {
+  const { buf, pressure, chunks } = sink;
+  if (buf.bodiesElided || buf.dropped) return;
+  const bufChunk = chunkToBuffer(chunk, encoding);
+  if (bufChunk && reserveCaptureBytes(pressure, buf, bufChunk.byteLength)) {
+    chunks.push(bufChunk);
+  }
 }
 
 function chunkToBuffer(
@@ -209,13 +313,11 @@ export function installResponseCapture(
       if (buf.responseStartedAt === 0) {
         buf.responseStartedAt = performance.now() - buf.startedAt;
       }
-      const bufChunk = chunkToBuffer(
+      tryCaptureChunk(
+        { buf, pressure, chunks },
         chunk,
         typeof encoding === "string" ? encoding : undefined,
       );
-      if (bufChunk && reserveCaptureBytes(pressure, buf, bufChunk.byteLength)) {
-        chunks.push(bufChunk);
-      }
     } catch {
       // Fail-open.
     }
@@ -234,14 +336,14 @@ export function installResponseCapture(
       if (buf.responseStartedAt === 0) {
         buf.responseStartedAt = performance.now() - buf.startedAt;
       }
-      const bufChunk = chunkToBuffer(
+      tryCaptureChunk(
+        { buf, pressure, chunks },
         chunk,
         typeof encoding === "string" ? encoding : undefined,
       );
-      if (bufChunk && reserveCaptureBytes(pressure, buf, bufChunk.byteLength)) {
-        chunks.push(bufChunk);
-      }
-      buf.responseBody = Buffer.concat(chunks);
+      buf.responseBody = buf.bodiesElided
+        ? new Uint8Array()
+        : Buffer.concat(chunks);
       buf.statusCode = res.statusCode;
       buf.statusText = res.statusMessage || "";
       buf.responseHeaders = headersToFields(
@@ -272,15 +374,11 @@ export function installInboundBodyCapture(
   req.push = (chunk: unknown, encoding?: BufferEncoding) => {
     try {
       if (chunk) {
-        const bufChunk = chunkToBuffer(chunk, encoding);
-        if (
-          bufChunk &&
-          reserveCaptureBytes(pressure, buf, bufChunk.byteLength)
-        ) {
-          chunks.push(bufChunk);
-        }
+        tryCaptureChunk({ buf, pressure, chunks }, chunk, encoding);
       } else {
-        buf.inboundBody = Buffer.concat(chunks);
+        buf.inboundBody = buf.bodiesElided
+          ? new Uint8Array()
+          : Buffer.concat(chunks);
       }
     } catch {
       // Fail-open.

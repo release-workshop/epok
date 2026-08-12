@@ -12,6 +12,10 @@ describe("default pressure concurrency", () => {
   it("keeps maxConcurrency at 2 (finalize steal is not fixed by raising it)", () => {
     expect(DEFAULT_PRESSURE_LIMITS.maxConcurrency).toBe(2);
   });
+
+  it("elides bodies under byte-budget pressure by default", () => {
+    expect(DEFAULT_PRESSURE_LIMITS.bodyElision).toBe(true);
+  });
 });
 
 describe("attachRecorder pressure controls", () => {

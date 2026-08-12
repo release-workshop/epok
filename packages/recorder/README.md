@@ -14,7 +14,7 @@ Core observation contracts stay Fetch-shaped in `@epok/core`. This package adapt
 
 ## Status
 
-`attachRecorder` installs Node attach (request-scoped context, inbound `http.Server` wrap, outbound `fetch` intercept) and enqueues sanitize → finalize → persist on a bounded async queue. For Fetch-shaped runtimes: Cloudflare Workers → `@epok/recorder/workers` ([proof](../../docs/workers-runtime-proof.md)); Bun → `@epok/recorder/bun` ([proof](../../docs/bun-runtime-proof.md)). `enabled: false` keeps interception plumbing installed while short-circuiting capture/sanitize/persist (structural no-op baseline). When queue/context/buffer budgets are exceeded, Interactions are dropped (never the host request). Wide events cover observed/finalized/persisted/dropped, queue depth, and shedding activation.
+`attachRecorder` installs Node attach (request-scoped context, inbound `http.Server` wrap, outbound `fetch` intercept) and enqueues sanitize → finalize → persist on a bounded async queue. For Fetch-shaped runtimes: Cloudflare Workers → `@epok/recorder/workers` ([proof](../../docs/workers-runtime-proof.md)); Bun → `@epok/recorder/bun` ([proof](../../docs/bun-runtime-proof.md)). `enabled: false` keeps interception plumbing installed while short-circuiting capture/sanitize/persist (structural no-op baseline). When queue/context/buffer budgets are exceeded, the recorder sheds deterministically (never the host request). Byte-budget pressure **elides bodies** by default (`pressure.bodyElision`, default `true`) and still persists a valid Interaction with empty CAS bodies; set `bodyElision: false` to drop instead (`buffered_bytes_budget`). Queue and active-context pressure still drop the Interaction. Wide events cover observed/finalized/persisted/dropped, queue depth, shedding activation, and `body_elided`.
 
 ## Capture intensity (`captureMode`)
 
@@ -33,12 +33,13 @@ Production default is `"errors"` for lean storage. Use `"full"` for test-data co
 
 Optional `pressure` bounds on `attachRecorder`:
 
-| Limit               | Default | Effect when exceeded                             |
-| ------------------- | ------- | ------------------------------------------------ |
-| `maxQueueDepth`     | 128     | Drop at enqueue (`queue_full`)                   |
-| `maxConcurrency`    | 2       | Caps parallel finalize/persist workers           |
-| `maxActiveContexts` | 256     | Drop at request start (`active_contexts_budget`) |
-| `maxBufferedBytes`  | 16 MiB  | Drop capture (`buffered_bytes_budget`)           |
+| Limit               | Default | Effect when exceeded                                   |
+| ------------------- | ------- | ------------------------------------------------------ |
+| `maxQueueDepth`     | 128     | Drop at enqueue (`queue_full`)                         |
+| `maxConcurrency`    | 2       | Caps parallel finalize/persist workers                 |
+| `maxActiveContexts` | 256     | Drop at request start (`active_contexts_budget`)       |
+| `maxBufferedBytes`  | 16 MiB  | Elide bodies (`body_elided`); persist metadata         |
+| `bodyElision`       | `true`  | `false` drops on byte budget (`buffered_bytes_budget`) |
 
 Local overload proof:
 

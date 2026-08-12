@@ -4,6 +4,7 @@ import {
   beginBodyRead,
   endBodyRead,
   headersToFields,
+  skipOrElideContentLength,
   takeCapturedBytes,
   teeFetchResponseBody,
   type CaptureBuffers,
@@ -28,6 +29,9 @@ export function readFetchInboundBody(
   pressure: PressureController,
 ): void {
   if (!expectsFetchInboundBody(request)) return;
+  if (skipOrElideContentLength(pressure, buf, request.headers)) {
+    return;
+  }
   beginBodyRead(buf);
   void (async () => {
     try {
@@ -52,14 +56,19 @@ export function captureFetchResponse(
   buf: CaptureBuffers,
   pressure: PressureController,
 ): Response {
-  beginBodyRead(buf);
-  const teed = teeFetchResponseBody(response);
   buf.statusCode = response.status;
   buf.statusText = response.statusText;
   buf.responseHeaders = headersToFields(response.headers);
   if (buf.responseStartedAt === 0) {
     buf.responseStartedAt = performance.now() - buf.startedAt;
   }
+  if (skipOrElideContentLength(pressure, buf, response.headers)) {
+    buf.responseBody = new Uint8Array();
+    buf.responseEndedAt = performance.now() - buf.startedAt;
+    return response;
+  }
+  beginBodyRead(buf);
+  const teed = teeFetchResponseBody(response);
 
   void (async () => {
     try {

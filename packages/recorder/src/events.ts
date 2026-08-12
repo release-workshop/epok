@@ -54,4 +54,10 @@ export type RecorderWideEvent =
       /** Running totals for dropped/observed ratio. */
       observed: number;
       dropped: number;
+    }
+  | {
+      type: "body_elided";
+      reason: "buffered_bytes_budget";
+      /** Bytes released from this capture when already-buffered bodies were dropped. */
+      releasedBytes: number;
     };
