@@ -3,7 +3,13 @@ import type { RecorderObservationHooks } from "@epok/core";
 import type { RequestCaptureContext } from "./context.js";
 import type { RecorderWideEvent } from "./events.js";
 
-export type EmitWideEvent = (event: RecorderWideEvent) => void;
+export type EmitWideEvent = ((event: RecorderWideEvent) => void) & {
+  /**
+   * Whether this subscriber would receive events of `type`.
+   * Callers skip constructing payloads when this returns false.
+   */
+  includes(type: RecorderWideEvent["type"]): boolean;
+};
 
 function headerMap(
   headers: Headers | IncomingMessage["headers"],
@@ -64,17 +70,20 @@ export function observeInbound(
   hooks: RecorderObservationHooks | undefined,
   emit: EmitWideEvent | undefined,
 ): void {
-  if (!emit && !hooks?.onInbound) return;
+  const emitObserved = emit?.includes("observed") === true;
+  if (!emitObserved && !hooks?.onInbound) return;
   safeObserve(emit, ctx.interactionId, () => {
     const request = inboundRequestFromNode(req);
-    emit?.({
-      type: "observed",
-      phase: "inbound",
-      interactionId: ctx.interactionId,
-      method: request.method,
-      url: request.url,
-      requestHeaders: headerMap(request.headers),
-    });
+    if (emitObserved) {
+      emit({
+        type: "observed",
+        phase: "inbound",
+        interactionId: ctx.interactionId,
+        method: request.method,
+        url: request.url,
+        requestHeaders: headerMap(request.headers),
+      });
+    }
     hooks?.onInbound?.(request);
   });
 }
@@ -86,19 +95,21 @@ export function observeResponse(
   hooks: RecorderObservationHooks | undefined,
   emit: EmitWideEvent | undefined,
 ): void {
-  if (!emit && !hooks?.onResponse) return;
+  const emitObserved = emit?.includes("observed") === true;
+  if (!emitObserved && !hooks?.onResponse) return;
   safeObserve(emit, ctx.interactionId, () => {
     const request = inboundRequestFromNode(req);
-    const response = new Response(null, { status: res.statusCode });
-    emit?.({
-      type: "observed",
-      phase: "response",
-      interactionId: ctx.interactionId,
-      method: request.method,
-      url: request.url,
-      status: res.statusCode,
-    });
-    hooks?.onResponse?.(response);
+    if (emitObserved) {
+      emit({
+        type: "observed",
+        phase: "response",
+        interactionId: ctx.interactionId,
+        method: request.method,
+        url: request.url,
+        status: res.statusCode,
+      });
+    }
+    hooks?.onResponse?.(new Response(null, { status: res.statusCode }));
   });
 }
 
@@ -110,29 +121,35 @@ export function observeDependency(
   hooks: RecorderObservationHooks | undefined,
   emit: EmitWideEvent | undefined,
 ): void {
-  if (!emit && !hooks?.onDependency) return;
+  const emitObserved = emit?.includes("observed") === true;
+  const emitMissing = emit?.includes("context_missing") === true;
+  if (!emitObserved && !emitMissing && !hooks?.onDependency) return;
   safeObserve(emit, ctx?.interactionId, () => {
     const request = new Request(input, init);
     if (!ctx) {
-      emit?.({
-        type: "context_missing",
-        phase: "dependency",
-        reason: "no_request_context",
-        method: request.method,
-        url: request.url,
-      });
+      if (emitMissing) {
+        emit({
+          type: "context_missing",
+          phase: "dependency",
+          reason: "no_request_context",
+          method: request.method,
+          url: request.url,
+        });
+      }
       return;
     }
 
-    emit?.({
-      type: "observed",
-      phase: "dependency",
-      interactionId: ctx.interactionId,
-      method: request.method,
-      url: request.url,
-      requestHeaders: headerMap(request.headers),
-      ...(response ? { status: response.status } : {}),
-    });
+    if (emitObserved) {
+      emit({
+        type: "observed",
+        phase: "dependency",
+        interactionId: ctx.interactionId,
+        method: request.method,
+        url: request.url,
+        requestHeaders: headerMap(request.headers),
+        ...(response ? { status: response.status } : {}),
+      });
+    }
     hooks?.onDependency?.(request, response);
   });
 }

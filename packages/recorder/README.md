@@ -33,7 +33,7 @@ Production default is `"errors"` for lean storage. Use `"full"` for test-data co
 
 Poll `stats()` on the recorder handle for health and shedding — no subscriber required. The snapshot includes lifecycle counters (`observed`, `finalized`, `persisted`, `dropped`, `filtered`, `elided`) and point-in-time gauges (`queueDepth`, `activeContexts`, `bufferedBytes`, shed flags). Derive shed rate as `dropped / observed`.
 
-Wide events via `onEvent` remain opt-in for harnesses and debugging. Exporters do **not** need `onEvent` (or `"all"` event verbosity). `pressureStats()` is a deprecated alias of `stats()`.
+Wide events via `onEvent` remain opt-in for harnesses and debugging. When set, `onEventCategories` defaults to `"pressure"` (queue/shed/drop/elide/finalize/persist/`observation_dropped`) so subscribers are not flooded with per-request `observed` chatter; pass `"all"` to include `observed` and `context_missing`. With no `onEvent`, the recorder skips wide-event emit work entirely — counters still update via `stats()`. Exporters do **not** need `onEvent` (or `"all"` event verbosity). `pressureStats()` is a deprecated alias of `stats()`.
 
 ### Metrics exporter (opt-in)
 

@@ -17,16 +17,19 @@ export function observeInboundFetch(
   hooks: RecorderObservationHooks | undefined,
   emit: EmitWideEvent | undefined,
 ): void {
-  if (!emit && !hooks?.onInbound) return;
+  const emitObserved = emit?.includes("observed") === true;
+  if (!emitObserved && !hooks?.onInbound) return;
   safeObserve(emit, ctx.interactionId, () => {
-    emit?.({
-      type: "observed",
-      phase: "inbound",
-      interactionId: ctx.interactionId,
-      method: request.method,
-      url: request.url,
-      requestHeaders: headerMap(request.headers),
-    });
+    if (emitObserved) {
+      emit({
+        type: "observed",
+        phase: "inbound",
+        interactionId: ctx.interactionId,
+        method: request.method,
+        url: request.url,
+        requestHeaders: headerMap(request.headers),
+      });
+    }
     hooks?.onInbound?.(request);
   });
 }
@@ -38,16 +41,19 @@ export function observeResponseFetch(
   hooks: RecorderObservationHooks | undefined,
   emit: EmitWideEvent | undefined,
 ): void {
-  if (!emit && !hooks?.onResponse) return;
+  const emitObserved = emit?.includes("observed") === true;
+  if (!emitObserved && !hooks?.onResponse) return;
   safeObserve(emit, ctx.interactionId, () => {
-    emit?.({
-      type: "observed",
-      phase: "response",
-      interactionId: ctx.interactionId,
-      method: request.method,
-      url: request.url,
-      status: response.status,
-    });
+    if (emitObserved) {
+      emit({
+        type: "observed",
+        phase: "response",
+        interactionId: ctx.interactionId,
+        method: request.method,
+        url: request.url,
+        status: response.status,
+      });
+    }
     hooks?.onResponse?.(response);
   });
 }

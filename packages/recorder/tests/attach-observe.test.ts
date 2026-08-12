@@ -26,6 +26,7 @@ describe("attachRecorder observe-only", () => {
 
     handle = attachRecorder({
       storage: unusedStorage(),
+      onEventCategories: "all",
       onEvent: (event) => {
         events.push(event);
       },
@@ -89,6 +90,7 @@ describe("attachRecorder observe-only", () => {
 
     handle = attachRecorder({
       storage: unusedStorage(),
+      onEventCategories: "all",
       hooks: {
         onInbound() {
           throw new Error("inbound hook boom");
@@ -139,6 +141,7 @@ describe("attachRecorder observe-only", () => {
 
     handle = attachRecorder({
       storage: unusedStorage(),
+      onEventCategories: "all",
       onEvent: (event) => {
         events.push(event);
       },

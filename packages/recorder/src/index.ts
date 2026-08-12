@@ -3,7 +3,6 @@ import { DEFAULT_CAPTURE_MODE, type CaptureMode } from "./capture-mode.js";
 import type { RecorderWideEvent } from "./events.js";
 import { installInboundAttach } from "./inbound.js";
 import { installFetchIntercept } from "./outbound.js";
-import type { EmitWideEvent } from "./observe.js";
 import {
   DEFAULT_PRESSURE_LIMITS,
   PressureController,
@@ -11,6 +10,11 @@ import {
 } from "./pressure.js";
 import { BoundedAsyncQueue } from "./queue.js";
 import { snapshotRecorderStats, type RecorderStats } from "./stats.js";
+import {
+  createWideEventEmit,
+  DEFAULT_ON_EVENT_CATEGORIES,
+  type OnEventCategories,
+} from "./wide-event-emit.js";
 
 export type { RecorderObservationHooks, StorageProvider };
 export type { CaptureMode } from "./capture-mode.js";
@@ -19,6 +23,7 @@ export {
   shouldPersistInteraction,
 } from "./capture-mode.js";
 export type { RecorderWideEvent } from "./events.js";
+export type { OnEventCategories } from "./wide-event-emit.js";
 export type { RecorderPressureLimits } from "./pressure.js";
 export { DEFAULT_PRESSURE_LIMITS } from "./pressure.js";
 export type { RecorderStats } from "./stats.js";
@@ -60,8 +65,14 @@ export interface AttachRecorderOptions {
    */
   captureMode?: CaptureMode;
   hooks?: RecorderObservationHooks;
-  /** Wide structured self-observation events (observed, drops, context failures). */
+  /** Wide structured self-observation events (opt-in; advanced / harness path). */
   onEvent?: (event: RecorderWideEvent) => void;
+  /**
+   * Wide-event category filter when `onEvent` is set.
+   * - `"pressure"` (default): queue/shed/drop/elide/finalize/persist/`observation_dropped`
+   * - `"all"`: pressure set plus per-request `observed` and `context_missing`
+   */
+  onEventCategories?: OnEventCategories;
   /**
    * Upper bounds for async sanitize/finalize/persist work and capture buffers.
    * Byte-budget pressure elides bodies by default; queue/context pressure still
@@ -91,15 +102,10 @@ export interface RecorderHandle {
 export function attachRecorder(options: AttachRecorderOptions): RecorderHandle {
   const enabled = options.enabled !== false;
   const captureMode = options.captureMode ?? DEFAULT_CAPTURE_MODE;
-  const emit: EmitWideEvent | undefined = options.onEvent
-    ? (event: RecorderWideEvent): void => {
-        try {
-          options.onEvent?.(event);
-        } catch {
-          // Fail-open: subscriber errors must not affect the host.
-        }
-      }
-    : undefined;
+  const emit = createWideEventEmit(
+    options.onEvent,
+    options.onEventCategories ?? DEFAULT_ON_EVENT_CATEGORIES,
+  );
 
   const limits: RecorderPressureLimits = {
     ...DEFAULT_PRESSURE_LIMITS,
