@@ -22,6 +22,13 @@ export type { RecorderWideEvent } from "./events.js";
 export type { RecorderPressureLimits } from "./pressure.js";
 export { DEFAULT_PRESSURE_LIMITS } from "./pressure.js";
 export type { RecorderStats } from "./stats.js";
+export { startStatsExporter, statsCounterDeltas } from "./stats-exporter.js";
+export type {
+  StartStatsExporterOptions,
+  StatsCounterDeltas,
+  StatsExporterHandle,
+  StatsExporterSample,
+} from "./stats-exporter.js";
 export { finalizeObservation } from "./finalize.js";
 export type {
   FinalizedInteraction,

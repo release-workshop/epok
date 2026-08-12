@@ -33,7 +33,30 @@ Production default is `"errors"` for lean storage. Use `"full"` for test-data co
 
 Poll `stats()` on the recorder handle for health and shedding — no subscriber required. The snapshot includes lifecycle counters (`observed`, `finalized`, `persisted`, `dropped`, `filtered`, `elided`) and point-in-time gauges (`queueDepth`, `activeContexts`, `bufferedBytes`, shed flags). Derive shed rate as `dropped / observed`.
 
-Wide events via `onEvent` remain opt-in for harnesses, debugging, and future exporters. `pressureStats()` is a deprecated alias of `stats()`.
+Wide events via `onEvent` remain opt-in for harnesses and debugging. Exporters do **not** need `onEvent` (or `"all"` event verbosity). `pressureStats()` is a deprecated alias of `stats()`.
+
+### Metrics exporter (opt-in)
+
+`startStatsExporter` periodically polls `stats()` and pushes absolute snapshots plus **counter deltas** to your sink. No Prometheus/OTel dependency in public core — wire `onSample` to logs, a dashboard agent, or your own metrics client. The timer is unref'd and fail-open (`onSample` throws are swallowed).
+
+```ts
+import { attachRecorder, startStatsExporter } from "@epok/recorder";
+
+const handle = attachRecorder({ storage });
+const exporter = startStatsExporter({
+  stats: () => handle.stats(),
+  intervalMs: 10_000,
+  onSample: ({ at, snapshot, deltas }) => {
+    console.log(JSON.stringify({ at, snapshot, deltas }));
+  },
+});
+
+// later
+exporter.stop();
+handle.detach();
+```
+
+Wide-event subscription stays independent: you can use `onEvent` without exporters, and exporters without any subscriber.
 
 ## Pressure controls
 
