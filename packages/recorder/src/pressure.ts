@@ -40,6 +40,9 @@ export class PressureController {
   private _observed = 0;
   private _dropped = 0;
   private _elided = 0;
+  private _finalized = 0;
+  private _persisted = 0;
+  private _filtered = 0;
   private _activeContexts = 0;
   private _bufferedBytes = 0;
   private _queueDepth = 0;
@@ -65,6 +68,18 @@ export class PressureController {
 
   get elided(): number {
     return this._elided;
+  }
+
+  get finalized(): number {
+    return this._finalized;
+  }
+
+  get persisted(): number {
+    return this._persisted;
+  }
+
+  get filtered(): number {
+    return this._filtered;
   }
 
   get activeContexts(): number {
@@ -95,6 +110,18 @@ export class PressureController {
 
   recordObserved(): void {
     this._observed += 1;
+  }
+
+  recordFinalized(): void {
+    this._finalized += 1;
+  }
+
+  recordPersisted(): void {
+    this._persisted += 1;
+  }
+
+  recordFiltered(): void {
+    this._filtered += 1;
   }
 
   tryAcquireContext(): boolean {

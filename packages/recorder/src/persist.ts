@@ -10,6 +10,7 @@ export async function persistFinalizedInteraction(
   storage: StorageProvider,
   finalized: FinalizedInteraction,
   emit: EmitWideEvent | undefined,
+  onPersisted?: () => void,
 ): Promise<boolean> {
   const interactionId = finalized.manifest.id;
   const manifestHash = finalized.manifest.integrity.manifestHash;
@@ -24,6 +25,7 @@ export async function persistFinalizedInteraction(
       manifestHash,
       bytes,
     });
+    onPersisted?.();
     emit?.({
       type: "interaction_persisted",
       interactionId,

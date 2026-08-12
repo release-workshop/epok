@@ -10,6 +10,7 @@ import {
   type RecorderPressureLimits,
 } from "./pressure.js";
 import { BoundedAsyncQueue } from "./queue.js";
+import { snapshotRecorderStats, type RecorderStats } from "./stats.js";
 
 export type { RecorderObservationHooks, StorageProvider };
 export type { CaptureMode } from "./capture-mode.js";
@@ -20,6 +21,7 @@ export {
 export type { RecorderWideEvent } from "./events.js";
 export type { RecorderPressureLimits } from "./pressure.js";
 export { DEFAULT_PRESSURE_LIMITS } from "./pressure.js";
+export type { RecorderStats } from "./stats.js";
 export { finalizeObservation } from "./finalize.js";
 export type {
   FinalizedInteraction,
@@ -65,19 +67,13 @@ export interface RecorderHandle {
   detach(): void;
   /** Best-effort drain of the background persist queue (tests/shutdown). */
   drain(timeoutMs?: number): Promise<void>;
-  /** Snapshot of pressure counters for harnesses. */
-  pressureStats(): {
-    observed: number;
-    dropped: number;
-    elided: number;
-    queueDepth: number;
-    queueLimit: number;
-    overBudget: boolean;
-    sheddingActive: boolean;
-    byteBudgetExhausted: boolean;
-    bufferedBytes: number;
-    activeContexts: number;
-  };
+  /** Pull snapshot of recorder health counters and pressure gauges. */
+  stats(): RecorderStats;
+  /**
+   * Snapshot of pressure counters for harnesses.
+   * @deprecated Use `stats()` instead.
+   */
+  pressureStats(): RecorderStats;
 }
 
 /**
@@ -133,19 +129,11 @@ export function attachRecorder(options: AttachRecorderOptions): RecorderHandle {
     drain(timeoutMs?: number): Promise<void> {
       return queue.drain(timeoutMs);
     },
+    stats() {
+      return snapshotRecorderStats(pressure);
+    },
     pressureStats() {
-      return {
-        observed: pressure.observed,
-        dropped: pressure.dropped,
-        elided: pressure.elided,
-        queueDepth: pressure.queueDepth,
-        queueLimit: pressure.limits.maxQueueDepth,
-        overBudget: pressure.overBudget,
-        sheddingActive: pressure.sheddingActive,
-        byteBudgetExhausted: pressure.byteBudgetExhausted,
-        bufferedBytes: pressure.bufferedBytes,
-        activeContexts: pressure.activeContexts,
-      };
+      return snapshotRecorderStats(pressure);
     },
   };
 }

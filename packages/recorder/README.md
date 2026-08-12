@@ -29,6 +29,12 @@ Non-persist under `errors` emits `interaction_dropped` with reason `capture_mode
 
 Production default is `"errors"` for lean storage. Use `"full"` for test-data collection. The credibility B harness **always pins `captureMode: "full"`** (worst case); pass `--capture-mode errors` only for headroom compare experiments, never as the CI gate profile.
 
+## Self-observation
+
+Poll `stats()` on the recorder handle for health and shedding — no subscriber required. The snapshot includes lifecycle counters (`observed`, `finalized`, `persisted`, `dropped`, `filtered`, `elided`) and point-in-time gauges (`queueDepth`, `activeContexts`, `bufferedBytes`, shed flags). Derive shed rate as `dropped / observed`.
+
+Wide events via `onEvent` remain opt-in for harnesses, debugging, and future exporters. `pressureStats()` is a deprecated alias of `stats()`.
+
 ## Pressure controls
 
 Optional `pressure` bounds on `attachRecorder`:
@@ -41,7 +47,7 @@ Optional `pressure` bounds on `attachRecorder`:
 | `maxBufferedBytes`  | 16 MiB  | Elide bodies (`body_elided`); persist metadata         |
 | `bodyElision`       | `true`  | `false` drops on byte budget (`buffered_bytes_budget`) |
 
-`pressureStats()` exposes `elided` (body-elision activations) and `byteBudgetExhausted` alongside `dropped`/`observed`. Byte-budget shedding emits `body_elided` (with `interactionId` when known); queue/context shedding emits `shedding` + `interaction_dropped`. Body elision does **not** enter full shed mode (collect continues; only payloads are stripped).
+`stats()` exposes `elided` (body-elision activations) and `byteBudgetExhausted` alongside `dropped`/`observed`/`filtered`. Byte-budget shedding emits `body_elided` (with `interactionId` when known); queue/context shedding emits `shedding` + `interaction_dropped`. Body elision does **not** enter full shed mode (collect continues; only payloads are stripped).
 
 Local overload proof:
 

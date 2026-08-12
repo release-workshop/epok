@@ -71,6 +71,8 @@ export interface FinalizedInteraction {
 export interface FinalizeObservationOptions {
   sanitizer?: Sanitizer;
   onEvent?: (event: RecorderWideEvent) => void;
+  /** Called after finalize succeeds, before the wide event fan-out. */
+  onFinalized?: () => void;
 }
 
 const DEFAULT_RECORDER: RecorderIdentity = {
@@ -444,6 +446,7 @@ export function finalizeObservation(
       integrityObjects: acc.integrityObjects,
     });
 
+    options.onFinalized?.();
     emitSafe(options.onEvent, {
       type: "interaction_finalized",
       interactionId: capture.id,

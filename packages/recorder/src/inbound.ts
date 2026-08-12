@@ -203,14 +203,18 @@ async function settleAndEnqueue(input: {
           buf,
           captureMode,
         );
-        const finalized = finalizeObservation(
-          capture,
-          emit ? { onEvent: emit } : {},
-        );
+        const finalized = finalizeObservation(capture, {
+          ...(emit ? { onEvent: emit } : {}),
+          onFinalized: () => {
+            pressure.recordFinalized();
+          },
+        });
         if (finalized === null) {
           return;
         }
-        await persistFinalizedInteraction(storage, finalized, emit);
+        await persistFinalizedInteraction(storage, finalized, emit, () => {
+          pressure.recordPersisted();
+        });
       } finally {
         pressure.releaseBytes(reservedForJob);
         pressure.releaseContext();
@@ -242,6 +246,7 @@ function scheduleCaptureModeDrop(input: {
   const { interactionId, reservedBytes, emit, pressure } = input;
   setImmediate(() => {
     try {
+      pressure.recordFiltered();
       emit?.({
         type: "interaction_dropped",
         reason: "capture_mode_filter",

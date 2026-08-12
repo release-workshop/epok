@@ -22,6 +22,7 @@ import {
   type RecorderPressureLimits,
 } from "./pressure.js";
 import { BoundedAsyncQueue } from "./queue.js";
+import { snapshotRecorderStats, type RecorderStats } from "./stats.js";
 import {
   releaseCaptureBytes,
   waitForBodyReads,
@@ -32,6 +33,7 @@ export type { RecorderObservationHooks, StorageProvider };
 export type { CaptureMode } from "./capture-mode.js";
 export type { RecorderWideEvent } from "./events.js";
 export type { RecorderPressureLimits } from "./pressure.js";
+export type { RecorderStats } from "./stats.js";
 
 /** Fetch-shaped handler type for Cloudflare Workers and WinterCG runtimes. */
 export type WorkersFetchHandler = (
@@ -54,18 +56,13 @@ export interface WorkersRecorderHandle {
   wrapHandler(handler: WorkersFetchHandler): WorkersFetchHandler;
   detach(): void;
   drain(timeoutMs?: number): Promise<void>;
-  pressureStats(): {
-    observed: number;
-    dropped: number;
-    elided: number;
-    queueDepth: number;
-    queueLimit: number;
-    overBudget: boolean;
-    sheddingActive: boolean;
-    byteBudgetExhausted: boolean;
-    bufferedBytes: number;
-    activeContexts: number;
-  };
+  /** Pull snapshot of recorder health counters and pressure gauges. */
+  stats(): RecorderStats;
+  /**
+   * Snapshot of pressure counters for harnesses.
+   * @deprecated Use `stats()` instead.
+   */
+  pressureStats(): RecorderStats;
 }
 
 const DEFAULT_WORKERS_RUNTIME = {
@@ -231,19 +228,11 @@ export function attachWorkersRecorder(
     drain(timeoutMs?: number): Promise<void> {
       return drainAll(timeoutMs);
     },
+    stats() {
+      return snapshotRecorderStats(pressure);
+    },
     pressureStats() {
-      return {
-        observed: pressure.observed,
-        dropped: pressure.dropped,
-        elided: pressure.elided,
-        queueDepth: pressure.queueDepth,
-        queueLimit: pressure.limits.maxQueueDepth,
-        overBudget: pressure.overBudget,
-        sheddingActive: pressure.sheddingActive,
-        byteBudgetExhausted: pressure.byteBudgetExhausted,
-        bufferedBytes: pressure.bufferedBytes,
-        activeContexts: pressure.activeContexts,
-      };
+      return snapshotRecorderStats(pressure);
     },
   };
 }
@@ -321,14 +310,18 @@ async function settleWorkersInteraction(input: {
           captureMode,
           runtime,
         );
-        const finalized = finalizeObservation(
-          capture,
-          emit ? { onEvent: emit } : {},
-        );
+        const finalized = finalizeObservation(capture, {
+          ...(emit ? { onEvent: emit } : {}),
+          onFinalized: () => {
+            pressure.recordFinalized();
+          },
+        });
         if (finalized === null) {
           return;
         }
-        await persistFinalizedInteraction(storage, finalized, emit);
+        await persistFinalizedInteraction(storage, finalized, emit, () => {
+          pressure.recordPersisted();
+        });
       } finally {
         pressure.releaseBytes(reservedForJob);
         pressure.releaseContext();
@@ -359,6 +352,7 @@ function scheduleCaptureModeDrop(input: {
   const { interactionId, reservedBytes, emit, pressure } = input;
   queueMicrotask(() => {
     try {
+      pressure.recordFiltered();
       emit?.({
         type: "interaction_dropped",
         reason: "capture_mode_filter",
