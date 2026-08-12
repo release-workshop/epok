@@ -41,6 +41,8 @@ Optional `pressure` bounds on `attachRecorder`:
 | `maxBufferedBytes`  | 16 MiB  | Elide bodies (`body_elided`); persist metadata         |
 | `bodyElision`       | `true`  | `false` drops on byte budget (`buffered_bytes_budget`) |
 
+`pressureStats()` exposes `elided` (body-elision activations) and `byteBudgetExhausted` alongside `dropped`/`observed`. Byte-budget shedding emits `body_elided` (with `interactionId` when known); queue/context shedding emits `shedding` + `interaction_dropped`. Body elision does **not** enter full shed mode (collect continues; only payloads are stripped).
+
 Local overload proof:
 
 ```bash

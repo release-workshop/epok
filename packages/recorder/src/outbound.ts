@@ -4,7 +4,9 @@ import {
   endBodyRead,
   headersToFields,
   readBufferedBodyInit,
+  skipOrElideBufferedBodyInit,
   skipOrElideContentLength,
+  skipOrElideKnownSize,
   takeCapturedBytes,
   teeFetchResponseBody,
   type CaptureBuffers,
@@ -57,14 +59,18 @@ export function installFetchIntercept(
     observeDependency(ctx, input, init, response, hooks, emit);
 
     if (ctx?.capture && !ctx.capture.dropped) {
-      if (skipOrElideContentLength(pressure, ctx.capture, response.headers)) {
-        recordDependencyWithoutBodies(
-          ctx.capture,
+      ctx.capture.interactionId ??= ctx.interactionId;
+      if (
+        skipOrElideBufferedBodyInit(pressure, ctx.capture, init?.body) ||
+        skipOrElideContentLength(pressure, ctx.capture, response.headers)
+      ) {
+        recordDependencyWithoutBodies({
+          buf: ctx.capture,
           input,
           init,
           response,
           startedAt,
-        );
+        });
         return response;
       }
       return scheduleDependencyCapture(
@@ -165,24 +171,42 @@ async function readOutboundRequestBody(
   try {
     const buffered = readBufferedBodyInit(init?.body);
     if (buffered !== null) {
+      if (skipOrElideKnownSize(pressure, buf, buffered.byteLength)) {
+        return new Uint8Array();
+      }
       return takeCapturedBytes(pressure, buf, buffered);
     }
     // Request constructed solely for capture — consume once, no clone.
     if (!request.body) return new Uint8Array();
+    const contentLength = request.headers.get("content-length");
+    if (contentLength !== null && contentLength !== "") {
+      const length = Number(contentLength);
+      if (
+        Number.isFinite(length) &&
+        length >= 0 &&
+        skipOrElideKnownSize(pressure, buf, length)
+      ) {
+        return new Uint8Array();
+      }
+    }
     const bytes = new Uint8Array(await request.arrayBuffer());
+    if (skipOrElideKnownSize(pressure, buf, bytes.byteLength)) {
+      return new Uint8Array();
+    }
     return takeCapturedBytes(pressure, buf, bytes);
   } catch {
     return new Uint8Array();
   }
 }
 
-function recordDependencyWithoutBodies(
-  buf: CaptureBuffers,
-  input: RequestInfo | URL,
-  init: RequestInit | undefined,
-  response: Response,
-  startedAt: number,
-): void {
+function recordDependencyWithoutBodies(input: {
+  buf: CaptureBuffers;
+  input: RequestInfo | URL;
+  init: RequestInit | undefined;
+  response: Response;
+  startedAt: number;
+}): void {
+  const { buf, input: fetchInput, init, response, startedAt } = input;
   const seq = buf.dependencies.length + 1;
   const started = Math.max(0, Math.round(startedAt));
   const endedAt = Math.max(
@@ -198,7 +222,7 @@ function recordDependencyWithoutBodies(
     contentType: response.headers.get("content-type"),
   };
   try {
-    const request = new Request(input, init);
+    const request = new Request(fetchInput, init);
     buf.dependencies.push({
       seq,
       startedAt: started,

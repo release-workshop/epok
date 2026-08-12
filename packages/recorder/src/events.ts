@@ -60,4 +60,5 @@ export type RecorderWideEvent =
       reason: "buffered_bytes_budget";
       /** Bytes released from this capture when already-buffered bodies were dropped. */
       releasedBytes: number;
+      interactionId?: string;
     };

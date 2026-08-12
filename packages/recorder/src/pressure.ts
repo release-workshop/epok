@@ -39,6 +39,7 @@ export class PressureController {
 
   private _observed = 0;
   private _dropped = 0;
+  private _elided = 0;
   private _activeContexts = 0;
   private _bufferedBytes = 0;
   private _queueDepth = 0;
@@ -60,6 +61,10 @@ export class PressureController {
 
   get dropped(): number {
     return this._dropped;
+  }
+
+  get elided(): number {
+    return this._elided;
   }
 
   get activeContexts(): number {
@@ -153,11 +158,18 @@ export class PressureController {
     );
   }
 
-  recordBodyElision(releasedBytes: number): void {
+  /** True when the global byte buffer is at or over its configured limit. */
+  get byteBudgetExhausted(): boolean {
+    return this._bufferedBytes >= this.limits.maxBufferedBytes;
+  }
+
+  recordBodyElision(releasedBytes: number, interactionId?: string): void {
+    this._elided += 1;
     this.emit?.({
       type: "body_elided",
       reason: "buffered_bytes_budget",
       releasedBytes,
+      ...(interactionId !== undefined ? { interactionId } : {}),
     });
   }
 

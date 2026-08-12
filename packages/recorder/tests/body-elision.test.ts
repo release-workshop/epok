@@ -59,7 +59,10 @@ describe("attachRecorder body-elision shed", () => {
     await handle.drain(2_000);
 
     expect(handle.pressureStats().dropped).toBe(0);
-    expect(events.some((e) => e.type === "body_elided")).toBe(true);
+    expect(handle.pressureStats().elided).toBeGreaterThan(0);
+    const elided = events.filter((e) => e.type === "body_elided");
+    expect(elided.length).toBeGreaterThan(0);
+    expect(elided.every((e) => e.interactionId !== undefined)).toBe(true);
     expect(storage.manifests.size).toBe(1);
 
     const first = [...storage.manifests.entries()][0];
@@ -273,6 +276,62 @@ describe("attachRecorder body-elision shed", () => {
     if (dep.response === null) return;
     expect(dep.response.body.cas.hash).toBe(EMPTY_BODY_SHA256);
     expect(dep.request.body.cas.hash).toBe(EMPTY_BODY_SHA256);
+  });
+
+  it("skips outbound tee when dependency Content-Length exceeds byte budget", async () => {
+    const storage = memoryStorage();
+    const events: RecorderWideEvent[] = [];
+    handle = attachRecorder({
+      storage,
+      captureMode: "full",
+      pressure: {
+        maxQueueDepth: 32,
+        maxConcurrency: 2,
+        maxActiveContexts: 32,
+        maxBufferedBytes: 16,
+      },
+      onEvent: (e) => {
+        events.push(e);
+      },
+    });
+
+    const depPayload = "q".repeat(64);
+    dependencyServer = createServer((_req, res) => {
+      res.writeHead(200, {
+        "content-type": "text/plain",
+        "content-length": String(depPayload.length),
+      });
+      res.end(depPayload);
+    });
+    await listen(dependencyServer);
+    const depBase = addressOf(dependencyServer);
+
+    server = createServer(async (_req, res) => {
+      const upstream = await fetch(`${depBase}/dep`);
+      await upstream.text();
+      res.writeHead(200, { "content-type": "text/plain" });
+      res.end("app-ok");
+    });
+    await listen(server);
+    const base = addressOf(server);
+
+    const response = await fetch(`${base}/`);
+    expect(response.status).toBe(200);
+    expect(await response.text()).toBe("app-ok");
+
+    await handle.drain(2_000);
+
+    expect(events.some((e) => e.type === "body_elided")).toBe(true);
+    const appManifest = [...storage.manifests.values()]
+      .map(
+        (bytes) =>
+          JSON.parse(new TextDecoder().decode(bytes)) as InteractionManifest,
+      )
+      .find((manifest) => manifest.dependencies.length > 0);
+    expect(appManifest).toBeDefined();
+    if (appManifest === undefined) return;
+    const dep = appManifest.dependencies[0];
+    expect(dep?.response?.body.cas.hash).toBe(EMPTY_BODY_SHA256);
   });
 });
 

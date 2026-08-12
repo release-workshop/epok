@@ -57,10 +57,12 @@ export interface WorkersRecorderHandle {
   pressureStats(): {
     observed: number;
     dropped: number;
+    elided: number;
     queueDepth: number;
     queueLimit: number;
     overBudget: boolean;
     sheddingActive: boolean;
+    byteBudgetExhausted: boolean;
     bufferedBytes: number;
     activeContexts: number;
   };
@@ -158,6 +160,7 @@ export function attachWorkersRecorder(
         if (!buf) {
           return handler(request);
         }
+        buf.interactionId = ctx.interactionId;
 
         let terminalHostError = false;
         try {
@@ -232,10 +235,12 @@ export function attachWorkersRecorder(
       return {
         observed: pressure.observed,
         dropped: pressure.dropped,
+        elided: pressure.elided,
         queueDepth: pressure.queueDepth,
         queueLimit: pressure.limits.maxQueueDepth,
         overBudget: pressure.overBudget,
         sheddingActive: pressure.sheddingActive,
+        byteBudgetExhausted: pressure.byteBudgetExhausted,
         bufferedBytes: pressure.bufferedBytes,
         activeContexts: pressure.activeContexts,
       };

@@ -26,6 +26,8 @@ export interface CaptureBuffers {
   dropReason?: string;
   /** Bodies were discarded under byte-budget pressure; persist metadata only. */
   bodiesElided: boolean;
+  /** Set when capture starts so elision events correlate to the Interaction. */
+  interactionId?: string;
   /** Uncaught/terminal host failure (destroy/errored/sync throw). */
   terminalHostError: boolean;
   bodyWaiters: Array<() => void>;
@@ -163,7 +165,7 @@ function elideCaptureBodies(
   }
   const released = buf.reservedBytes;
   releaseCaptureBytes(pressure, buf);
-  pressure.recordBodyElision(released);
+  pressure.recordBodyElision(released, buf.interactionId);
 }
 
 /** Skip body capture when this Interaction already elided or the byte budget is exhausted. */
@@ -188,7 +190,7 @@ export function skipOrElideBodies(
  * Elide before pulling a body whose known size would exceed the byte budget.
  * Returns true when the caller should skip expensive body work.
  */
-function skipOrElideKnownSize(
+export function skipOrElideKnownSize(
   pressure: PressureController,
   buf: CaptureBuffers,
   byteLength: number,
@@ -221,6 +223,34 @@ export function skipOrElideContentLength(
   const length = contentLengthBytes(headers);
   if (length === undefined) return skipOrElideBodies(pressure, buf);
   return skipOrElideKnownSize(pressure, buf, length);
+}
+
+/** Node inbound variant using IncomingMessage headers. */
+export function skipOrElideNodeContentLength(
+  pressure: PressureController,
+  buf: CaptureBuffers,
+  req: IncomingMessage,
+): boolean {
+  const raw = headerValue(req.headers["content-length"]);
+  if (raw === undefined || raw === "") {
+    return skipOrElideBodies(pressure, buf);
+  }
+  const length = Number(raw);
+  if (!Number.isFinite(length) || length < 0) {
+    return skipOrElideBodies(pressure, buf);
+  }
+  return skipOrElideKnownSize(pressure, buf, length);
+}
+
+/** Skip when a buffered BodyInit size is known to exceed the remaining budget. */
+export function skipOrElideBufferedBodyInit(
+  pressure: PressureController,
+  buf: CaptureBuffers,
+  body: BodyInit | null | undefined,
+): boolean {
+  const buffered = readBufferedBodyInit(body);
+  if (buffered === null) return skipOrElideBodies(pressure, buf);
+  return skipOrElideKnownSize(pressure, buf, buffered.byteLength);
 }
 
 /**

@@ -69,10 +69,12 @@ export interface RecorderHandle {
   pressureStats(): {
     observed: number;
     dropped: number;
+    elided: number;
     queueDepth: number;
     queueLimit: number;
     overBudget: boolean;
     sheddingActive: boolean;
+    byteBudgetExhausted: boolean;
     bufferedBytes: number;
     activeContexts: number;
   };
@@ -135,10 +137,12 @@ export function attachRecorder(options: AttachRecorderOptions): RecorderHandle {
       return {
         observed: pressure.observed,
         dropped: pressure.dropped,
+        elided: pressure.elided,
         queueDepth: pressure.queueDepth,
         queueLimit: pressure.limits.maxQueueDepth,
         overBudget: pressure.overBudget,
         sheddingActive: pressure.sheddingActive,
+        byteBudgetExhausted: pressure.byteBudgetExhausted,
         bufferedBytes: pressure.bufferedBytes,
         activeContexts: pressure.activeContexts,
       };

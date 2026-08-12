@@ -9,7 +9,7 @@ import {
   installInboundBodyCapture,
   installResponseCapture,
   releaseCaptureBytes,
-  skipOrElideBodies,
+  skipOrElideNodeContentLength,
   waitForBodyReads,
   type CaptureBuffers,
 } from "./capture.js";
@@ -86,9 +86,10 @@ export function installInboundAttach(deps: InboundAttachDeps): () => void {
       if (!buf) {
         return Reflect.apply(originalEmit, this, [event, ...args]) as boolean;
       }
+      buf.interactionId = ctx.interactionId;
       try {
         if (expectsInboundBody(req)) {
-          if (!skipOrElideBodies(pressure, buf)) {
+          if (!skipOrElideNodeContentLength(pressure, buf, req)) {
             installInboundBodyCapture(req, buf, pressure);
           }
         }
