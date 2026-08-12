@@ -50,15 +50,9 @@ importers:
       '@epok/recorder':
         specifier: workspace:*
         version: link:../../packages/recorder
-      '@epok/replay':
-        specifier: workspace:*
-        version: link:../../packages/replay
       '@epok/storage-fs':
         specifier: workspace:*
         version: link:../../packages/storage-fs
-      '@epok/storage-memory':
-        specifier: workspace:*
-        version: link:../../packages/storage-memory
 
   packages/cli:
     dependencies:

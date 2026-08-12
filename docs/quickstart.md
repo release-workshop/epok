@@ -1,6 +1,8 @@
 # Quickstart
 
-Record one HTTP execution as an **Interaction**, persist it on the filesystem, then validate and replay it with the `epok` CLI.
+Start a standalone Node HTTP demo with the recorder attached, drive an error
+path so one Interaction is persisted, then validate and executable-replay it
+with the `epok` CLI.
 
 ## Prerequisites
 
@@ -29,7 +31,7 @@ On mismatch, the CLI prints `FAIL` with an actionable code (for example `depende
 
 ## What just happened
 
-1. **Record** — the demo app calls one outbound `fetch`, sanitizes, and writes an Interaction via the filesystem Storage Provider (`examples/demo/.epok-data`)
+1. **Start + request** — the demo starts a no-framework Node HTTP server with `attachRecorder` and the filesystem Storage Provider, then `GET /fail` (spoofed application error → HTTP 500). Default `captureMode: "errors"` persists that Interaction under `examples/demo/.epok-data`
 2. **Validate** — `epok replay validate` checks manifest + CAS closure
 3. **Replay** — `epok replay run --handler …` re-drives the app path and injects the recorded dependency response (no live dependency)
 
@@ -43,9 +45,16 @@ pnpm --filter @epok/cli exec epok replay mock \
 
 `run` verifies executable re-run. `mock` confirms snapshot fixtures load from the same Interaction (dependency stubbing is via `mockReplay().installFetch()` in library code).
 
-## Manual CLI
+## Manual path (server → curl → CLI)
 
-After `pnpm --filter @epok/demo record`:
+```bash
+pnpm --filter @epok/demo start
+# in another terminal:
+curl -s -H 'x-request-id: demo-1' http://127.0.0.1:3456/fail
+```
+
+The demo server prints an `interaction_persisted` line with the Interaction id
+and the next CLI commands. Then:
 
 ```bash
 pnpm --filter @epok/cli exec epok replay validate \
