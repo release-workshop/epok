@@ -1,19 +1,16 @@
-import path from "node:path";
-import { fileURLToPath } from "node:url";
 import type { RecorderWideEvent } from "@epok/recorder";
-import { startDemo } from "./create-demo.js";
+import {
+  DEFAULT_DEMO_STORAGE_DIR,
+  DEFAULT_HANDLER_PATH,
+  startDemo,
+} from "./create-demo.js";
 
 /**
  * Long-running standalone attach demo. Drive with curl, then CLI validate/run
  * (see README / docs/quickstart.md). Prefer `pnpm --filter @epok/demo golden`
  * for the automated end-to-end path.
  */
-const demoRoot = path.resolve(
-  path.dirname(fileURLToPath(import.meta.url)),
-  "..",
-);
-const storageDir =
-  process.env.EPOK_STORAGE_DIR ?? path.join(demoRoot, ".epok-data");
+const storageDir = process.env.EPOK_STORAGE_DIR ?? DEFAULT_DEMO_STORAGE_DIR;
 const port = Number(process.env.PORT ?? 3456);
 const dependencyPort = Number(process.env.DEPENDENCY_PORT ?? 3457);
 
@@ -27,7 +24,7 @@ function logPersist(event: RecorderWideEvent): void {
       storageDir,
       next: [
         `pnpm --filter @epok/cli exec epok replay validate --dir ${storageDir} ${event.interactionId}`,
-        `pnpm --filter @epok/cli exec epok replay run --dir ${storageDir} --handler ${path.join(demoRoot, "dist", "handler.js")} ${event.interactionId}`,
+        `pnpm --filter @epok/cli exec epok replay run --dir ${storageDir} --handler ${DEFAULT_HANDLER_PATH} ${event.interactionId}`,
       ],
     }),
   );

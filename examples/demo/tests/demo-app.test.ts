@@ -1,9 +1,13 @@
-import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import type { InteractionManifest } from "@epok/core";
-import { startDemo, type DemoHandle } from "../src/create-demo.js";
+import {
+  listManifestIds,
+  startDemo,
+  type DemoHandle,
+} from "../src/create-demo.js";
 
 describe("demo app attach + filesystem persist", () => {
   let demo: DemoHandle | undefined;
@@ -53,19 +57,6 @@ describe("demo app attach + filesystem persist", () => {
     expect(await listManifestIds(storageDir)).toHaveLength(0);
   });
 });
-
-async function listManifestIds(rootDir: string): Promise<string[]> {
-  const dir = path.join(rootDir, "manifests");
-  try {
-    const names = await readdir(dir);
-    return names
-      .filter((name) => name.endsWith(".json"))
-      .map((name) => name.slice(0, -".json".length));
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === "ENOENT") return [];
-    throw err;
-  }
-}
 
 async function readManifest(
   rootDir: string,

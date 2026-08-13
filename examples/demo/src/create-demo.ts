@@ -4,7 +4,7 @@ import {
   type Server,
   type ServerResponse,
 } from "node:http";
-import { mkdir } from "node:fs/promises";
+import { mkdir, readdir } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -15,12 +15,13 @@ import {
 import { createFsStorageProvider } from "@epok/storage-fs";
 import { handleRequest } from "./handler.js";
 
-const demoRoot = path.resolve(
+export const DEMO_ROOT = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "..",
 );
 
-export const DEFAULT_DEMO_STORAGE_DIR = path.join(demoRoot, ".epok-data");
+export const DEFAULT_DEMO_STORAGE_DIR = path.join(DEMO_ROOT, ".epok-data");
+export const DEFAULT_HANDLER_PATH = path.join(DEMO_ROOT, "dist", "handler.js");
 
 export interface StartDemoOptions {
   /** Filesystem Storage Provider root. Defaults to `examples/demo/.epok-data`. */
@@ -150,4 +151,18 @@ function closeServer(server: Server): Promise<void> {
       else resolve();
     });
   });
+}
+
+/** Interaction ids from `manifests/<id>.json` under a filesystem Storage Provider root. */
+export async function listManifestIds(rootDir: string): Promise<string[]> {
+  const dir = path.join(rootDir, "manifests");
+  try {
+    const names = await readdir(dir);
+    return names
+      .filter((name) => name.endsWith(".json"))
+      .map((name) => name.slice(0, -".json".length));
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") return [];
+    throw err;
+  }
 }
