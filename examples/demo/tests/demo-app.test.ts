@@ -40,7 +40,7 @@ describe("demo app attach + filesystem persist", () => {
     if (id === undefined) return;
     const manifest = await readManifest(storageDir, id);
     expect(manifest.metadata.captureMode).toBe("errors");
-    expect(manifest.response.status).toBe(500);
+    expect(manifest.response?.status).toBe(500);
     expect(manifest.dependencies.length).toBeGreaterThanOrEqual(1);
   });
 

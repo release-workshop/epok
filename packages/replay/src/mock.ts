@@ -2,6 +2,11 @@ import type { StorageProvider } from "@epok/core";
 import { installDependencyInjection, type FetchInjection } from "./inject.js";
 import { unsupportedSpecVersionMessage } from "./compat.js";
 import {
+  hasObservedInboundResponse,
+  inboundResponseMissingMismatch,
+  INBOUND_RESPONSE_MISSING_MESSAGE,
+} from "./incomplete.js";
+import {
   buildInboundRequest,
   buildRecordedResponse,
   loadManifest,
@@ -124,6 +129,16 @@ export async function mockReplay(
   }
 
   const manifest = regenerated.manifest;
+  if (!hasObservedInboundResponse(manifest)) {
+    return {
+      ...failure(manifest.id, INBOUND_RESPONSE_MISSING_MESSAGE, {
+        timing,
+        mode,
+        playback: "snapshot",
+      }),
+      mismatches: [inboundResponseMissingMismatch()],
+    };
+  }
   const inbound = await buildInboundRequest(options.storage, manifest);
   const recordedResponse = await buildRecordedResponse(
     options.storage,

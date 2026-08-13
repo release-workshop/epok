@@ -111,7 +111,14 @@ After **Finalized**, the Interaction is immutable.
 
 ### 4.1 Partial and aborted executions
 
-If execution terminates early, the recorder may persist a partial Interaction if it still satisfies this spec's integrity and sanitization rules. Partial/aborted classification semantics are recorder/replay concerns and must be represented in metadata fields rather than by mutating format rules.
+If execution terminates early, the recorder may persist a partial Interaction if it still satisfies this spec's integrity and sanitization rules. There is no `PartialInteraction` fork and no metadata lifecycle enum.
+
+Incompleteness is represented in the existing message model:
+
+- top-level `response` is `null` when inbound terminal was not observed (client abort / close without finish / throw before headers)
+- a started dependency is unterminated when `response` is `null` and `error` is absent
+
+Replay may refuse executable re-run or snapshot playback when `response` is `null`. Integrity validation does not treat incompleteness as corruption.
 
 ---
 
@@ -231,10 +238,10 @@ Optional enrichment must never be required for format validity.
 
 Each dependency row includes:
 
-- `seq` (unique uint in this Interaction)
+- `seq` (unique uint in this Interaction; invoke order)
 - optional `parentSeq`
 - `startedAt` monotonic offset from Interaction start (ms)
-- `endedAt` monotonic offset from Interaction start (ms)
+- `endedAt` monotonic offset from Interaction start (ms); completion order is this field, not `seq`
 - `request` HTTP message
 - `response` HTTP message or `null`
 - optional `error` object with at least `type` and `message`
@@ -245,12 +252,14 @@ Retries are represented as separate dependency rows, not nested retry arrays.
 
 ## 9. Top-level Response
 
-`response` records what the host application returned to the inbound caller, including:
+`response` records what the host application returned to the inbound caller, or `null` when inbound terminal was not observed.
+
+When present, it includes:
 
 - HTTP response message fields (Section 5)
 - `startedAt`/`endedAt` timing fields for response lifecycle
 
-v1 preserves assembled response body bytes and overall timing fields, not chunk event timelines.
+v1 persists assembled body bytes that reached stream end. Unfinished body streams are stored as empty CAS slots, not prefixes. Chunk event timelines are out of scope.
 
 ---
 

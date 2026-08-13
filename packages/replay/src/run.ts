@@ -1,6 +1,11 @@
 import { type StorageProvider } from "@epok/core";
 import { installDependencyInjection, type FetchInjection } from "./inject.js";
 import { unsupportedSpecVersionMessage } from "./compat.js";
+import {
+  hasObservedInboundResponse,
+  inboundResponseMissingMismatch,
+  INBOUND_RESPONSE_MISSING_MESSAGE,
+} from "./incomplete.js";
 import { buildInboundRequest, loadManifest, resolveCasBytes } from "./load.js";
 import {
   applySignatureRegeneration,
@@ -170,6 +175,14 @@ async function compareToRecorded(
 ): Promise<ReplayResult> {
   const policy = mismatchPolicy[ctx.mode];
   const actualBody = new Uint8Array(await response.arrayBuffer());
+  if (manifest.response === null) {
+    const missing = inboundResponseMissingMismatch();
+    return failure(manifest.id, INBOUND_RESPONSE_MISSING_MESSAGE, {
+      timing: ctx.timing,
+      mode: ctx.mode,
+      mismatches: [missing],
+    });
+  }
   const expectedBody = await resolveCasBytes(
     storage,
     manifest,
@@ -295,6 +308,17 @@ export async function runReplay(
   if (!prepared.ok) return prepared.result;
 
   const { manifest, outcomes } = prepared;
+  if (!hasObservedInboundResponse(manifest)) {
+    const missing = inboundResponseMissingMismatch();
+    return withSignatureOutcomes(
+      failure(manifest.id, INBOUND_RESPONSE_MISSING_MESSAGE, {
+        timing,
+        mode,
+        mismatches: [missing],
+      }),
+      outcomes,
+    );
+  }
   const request = await buildInboundRequest(options.storage, manifest);
   const injection = installDependencyInjection({
     storage: options.storage,

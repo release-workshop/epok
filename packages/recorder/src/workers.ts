@@ -24,6 +24,7 @@ import {
 import { BoundedAsyncQueue } from "./queue.js";
 import { snapshotRecorderStats, type RecorderStats } from "./stats.js";
 import {
+  freezeCapture,
   releaseCaptureBytes,
   waitForBodyReads,
   type CaptureBuffers,
@@ -278,6 +279,7 @@ async function settleWorkersInteraction(input: {
   } = input;
 
   try {
+    freezeCapture(buf);
     await waitForBodyReads(buf);
 
     if (buf.dropped) {
@@ -296,7 +298,7 @@ async function settleWorkersInteraction(input: {
     const status = response?.status ?? buf.statusCode;
     if (
       !shouldPersistInteraction(captureMode, {
-        status,
+        ...(status !== undefined ? { status } : {}),
         terminalHostError: buf.terminalHostError,
       })
     ) {

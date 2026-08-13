@@ -58,6 +58,7 @@ export function captureFetchResponse(
 ): Response {
   buf.statusCode = response.status;
   buf.statusText = response.statusText;
+  buf.inboundTerminalObserved = true;
   buf.responseHeaders = headersToFields(response.headers);
   if (buf.responseStartedAt === 0) {
     buf.responseStartedAt = performance.now() - buf.startedAt;
@@ -102,26 +103,30 @@ export function buildObservedCaptureFromFetch(
     contentType: request.headers.get("content-type"),
   };
 
-  const responseMessage: ObservedCapture["response"] = {
-    protocol: "HTTP/1.1",
-    status: response?.status ?? buf.statusCode,
-    headers: buf.responseHeaders,
-    body: buf.responseBody,
-    contentType:
-      buf.responseHeaders.find((h) => h.name.toLowerCase() === "content-type")
-        ?.value ??
-      response?.headers.get("content-type") ??
-      null,
-    startedAt: Math.max(0, Math.round(buf.responseStartedAt)),
-    endedAt: Math.max(
-      Math.round(buf.responseStartedAt),
-      Math.round(buf.responseEndedAt),
-    ),
-  };
-  const statusText = buf.statusText || response?.statusText;
-  if (statusText) {
-    responseMessage.statusText = statusText;
-  }
+  const status = response?.status ?? buf.statusCode;
+  const responseMessage: ObservedCapture["response"] =
+    response !== null && status !== undefined
+      ? {
+          protocol: "HTTP/1.1",
+          status,
+          headers: buf.responseHeaders,
+          body: buf.responseBody,
+          contentType:
+            buf.responseHeaders.find(
+              (h) => h.name.toLowerCase() === "content-type",
+            )?.value ??
+            response.headers.get("content-type") ??
+            null,
+          startedAt: Math.max(0, Math.round(buf.responseStartedAt)),
+          endedAt: Math.max(
+            Math.round(buf.responseStartedAt),
+            Math.round(buf.responseEndedAt),
+          ),
+          ...(buf.statusText || response.statusText
+            ? { statusText: buf.statusText || response.statusText }
+            : {}),
+        }
+      : null;
 
   return {
     id: interactionId,

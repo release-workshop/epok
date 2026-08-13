@@ -20,12 +20,12 @@ Core observation contracts stay Fetch-shaped in `@epok/core`. This package adapt
 
 Collect stays always-on when the recorder is enabled. Persist intensity is controlled by `captureMode`:
 
-| Mode       | Default? | Sanitize → finalize → persist                              |
-| ---------- | -------- | ---------------------------------------------------------- |
-| `"errors"` | **yes**  | Only inbound status **≥ 500** or a terminal host exception |
-| `"full"`   | opt-in   | Every completed Interaction                                |
+| Mode       | Default? | Sanitize → finalize → persist                                 |
+| ---------- | -------- | ------------------------------------------------------------- |
+| `"errors"` | **yes**  | Only inbound status **≥ 500** or a terminal host exception    |
+| `"full"`   | opt-in   | Every settled Interaction, including abort (`response: null`) |
 
-Non-persist under `errors` emits `interaction_dropped` with reason `capture_mode_filter` (not a pressure shed). Pressure budgets and shedding are unchanged and take precedence when over budget. `enabled: false` remains orthogonal (credibility structural no-op).
+Non-persist under `errors` emits `interaction_dropped` with reason `capture_mode_filter` (not a pressure shed). Hangup without a host error is not an `errors` trigger. Incomplete captures that do persist use `response: null` when inbound terminal was not observed; started `fetch` calls are recorded at invoke (unterminated rows have `response: null` and no `error`). Pressure budgets and shedding are unchanged and take precedence when over budget. `enabled: false` remains orthogonal (credibility structural no-op).
 
 Production default is `"errors"` for lean storage. Use `"full"` for test-data collection. The credibility B harness **always pins `captureMode: "full"`** (worst case); pass `--capture-mode errors` only for headroom compare experiments, never as the CI gate profile.
 

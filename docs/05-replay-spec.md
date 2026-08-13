@@ -181,6 +181,7 @@ Terminal examples:
 - CAS object missing or hash mismatch
 - required signature regeneration failure
 - unsupported `specVersion` for configured compatibility policy
+- recorded inbound `response` is `null` (incomplete Interaction; refuse before execute)
 
 ### 8.2 Diagnostic lenient mode
 

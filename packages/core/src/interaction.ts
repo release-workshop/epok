@@ -146,7 +146,8 @@ export interface InteractionManifest {
   metadata: InteractionMetadata;
   inbound: HttpRequestMessage;
   dependencies: Dependency[];
-  response: InteractionResponse;
+  /** Null when inbound terminal was not observed (abort / close without finish). */
+  response: InteractionResponse | null;
   replay: ReplayHints;
   objects: Record<string, EmbeddedObject>;
   integrity: Integrity;

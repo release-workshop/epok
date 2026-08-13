@@ -21,6 +21,8 @@ Matching helpers live in `@epok/core` (`matchDependency` for executable; `matchS
 
 Both modes consume the same Interaction artifact. Choose explicitly: do not treat snapshot success as executable verification.
 
+`runReplay` and `mockReplay` refuse **before execute** when `response` is `null` (inbound terminal was not observed), with mismatch code `inbound_response_missing`. `validateReplay` still passes if integrity and CAS closure hold — incompleteness is not corruption. An unterminated dependency (`response: null`, no `error`) is allowed on run; inject fails if that seq is matched.
+
 ### Timing (`timing`)
 
 | Mode                    | Behavior                                                                                                                                                                                                |

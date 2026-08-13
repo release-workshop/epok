@@ -141,7 +141,7 @@ describe("attachWorkersRecorder", () => {
 
     await handle.drain(2_000);
 
-    expect(handle.pressureStats().dropped).toBe(0);
+    expect(handle.stats().dropped).toBe(0);
     expect(events.some((e) => e.type === "body_elided")).toBe(true);
     const persisted = events.filter((e) => e.type === "interaction_persisted");
     expect(persisted).toHaveLength(1);
@@ -152,7 +152,49 @@ describe("attachWorkersRecorder", () => {
     const manifest = JSON.parse(
       new TextDecoder().decode(manifestBytes),
     ) as InteractionManifest;
-    expect(manifest.response.body.cas.size).toBe(0);
+    expect(manifest.response?.body.cas.size).toBe(0);
+  });
+
+  it("persists handler throw as response null with an unterminated in-flight fetch", async () => {
+    const storage = createMemoryStorageProvider();
+    const events: RecorderWideEvent[] = [];
+    handle = attachWorkersRecorder({
+      storage,
+      captureMode: "errors",
+      onEvent: (event) => {
+        events.push(event);
+      },
+    });
+
+    dependencyServer = createServer((_req, _res) => {
+      // Hang so the outbound is still open when the handler throws.
+    });
+    await listen(dependencyServer);
+    const depBase = addressOf(dependencyServer);
+
+    const appHandler = handle.wrapHandler(async () => {
+      void fetch(`${depBase}/slow`).catch(() => undefined);
+      throw new Error("handler boom");
+    });
+
+    await expect(
+      appHandler(new Request("http://127.0.0.1/boom")),
+    ).rejects.toThrow("handler boom");
+    await handle.drain(2_000);
+
+    const persisted = events.filter((e) => e.type === "interaction_persisted");
+    expect(persisted).toHaveLength(1);
+    const interactionId = persisted[0]?.interactionId;
+    expect(interactionId).toBeDefined();
+    if (interactionId === undefined) return;
+    const manifest = JSON.parse(
+      new TextDecoder().decode(await storage.getManifest(interactionId)),
+    ) as InteractionManifest;
+    expect(manifest.response).toBeNull();
+    expect(manifest.dependencies).toHaveLength(1);
+    expect(manifest.dependencies[0]?.response).toBeNull();
+    expect(manifest.dependencies[0]?.error).toBeUndefined();
+    expect(manifest.dependencies[0]?.request.url).toContain("/slow");
   });
 });
 

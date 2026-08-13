@@ -6,6 +6,7 @@ import {
   type InteractionManifest,
   type StorageProvider,
 } from "@epok/core";
+import { INBOUND_RESPONSE_MISSING_MESSAGE } from "./incomplete.js";
 
 function decodeEmbedded(embedded: EmbeddedObject): Uint8Array {
   if (embedded.encoding === "utf-8") {
@@ -92,6 +93,9 @@ export async function buildRecordedResponse(
   storage: StorageProvider,
   manifest: InteractionManifest,
 ): Promise<Response> {
+  if (manifest.response === null) {
+    throw new Error(INBOUND_RESPONSE_MISSING_MESSAGE);
+  }
   const body = await resolveCasBytes(
     storage,
     manifest,

@@ -13,9 +13,10 @@ export const DEFAULT_CAPTURE_MODE: CaptureMode = "errors";
  */
 export function shouldPersistInteraction(
   mode: CaptureMode,
-  opts: { status: number; terminalHostError: boolean },
+  opts: { status?: number; terminalHostError: boolean },
 ): boolean {
   if (mode === "full") return true;
   if (opts.terminalHostError) return true;
+  if (opts.status === undefined) return false;
   return opts.status >= 500;
 }

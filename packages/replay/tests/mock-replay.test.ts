@@ -29,7 +29,7 @@ describe("mockReplay", () => {
 
       expect(ready.playback).toBe("snapshot");
       expect(ready.inbound.url).toBe(manifest.inbound.url);
-      expect(ready.recordedResponse.status).toBe(manifest.response.status);
+      expect(ready.recordedResponse.status).toBe(manifest.response?.status);
 
       const injection = ready.installFetch();
       try {

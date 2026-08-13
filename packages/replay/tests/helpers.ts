@@ -86,6 +86,8 @@ export async function persistReplayFixtureWithDeps(
     dependencies: FixtureDependency[];
     appResponseBody?: Uint8Array;
     appResponseStatus?: number;
+    /** When false, persist with `response: null` (no inbound terminal). */
+    includeResponse?: boolean;
   },
 ): Promise<InteractionManifest> {
   const id = options.id ?? "01900000-0000-7000-8000-000000000011";
@@ -94,6 +96,7 @@ export async function persistReplayFixtureWithDeps(
     options.appResponseBody ??
     new TextEncoder().encode(JSON.stringify({ total: 42 }));
 
+  const includeResponse = options.includeResponse !== false;
   const inboundCas = casRefFor(
     inboundBody,
     inboundBody.byteLength > 0 ? "application/json" : null,
@@ -104,13 +107,19 @@ export async function persistReplayFixtureWithDeps(
   const objects: Record<string, EmbeddedObject> = {
     [inboundCas.hash]: embedUtf8(inboundBody),
     [emptyReqCas.hash]: embedUtf8(new Uint8Array()),
-    [appResCas.hash]: embedUtf8(appResponseBody),
   };
   const integrityObjects = [
     { alg: "sha256" as const, hash: inboundCas.hash, size: inboundCas.size },
     { alg: "sha256" as const, hash: emptyReqCas.hash, size: emptyReqCas.size },
-    { alg: "sha256" as const, hash: appResCas.hash, size: appResCas.size },
   ];
+  if (includeResponse) {
+    objects[appResCas.hash] = embedUtf8(appResponseBody);
+    integrityObjects.push({
+      alg: "sha256" as const,
+      hash: appResCas.hash,
+      size: appResCas.size,
+    });
+  }
 
   const dependencies: Dependency[] = options.dependencies.map((dep, index) => {
     const depResCas = casRefFor(dep.responseBody, "application/json");
@@ -170,14 +179,16 @@ export async function persistReplayFixtureWithDeps(
       body: { cas: inboundCas },
     },
     dependencies,
-    response: {
-      protocol: "HTTP/1.1",
-      status: options.appResponseStatus ?? 200,
-      headers: [{ name: "Content-Type", value: "application/json" }],
-      body: { cas: appResCas },
-      startedAt: dependencies.length + 1,
-      endedAt: dependencies.length + 2,
-    },
+    response: includeResponse
+      ? {
+          protocol: "HTTP/1.1",
+          status: options.appResponseStatus ?? 200,
+          headers: [{ name: "Content-Type", value: "application/json" }],
+          body: { cas: appResCas },
+          startedAt: dependencies.length + 1,
+          endedAt: dependencies.length + 2,
+        }
+      : null,
     replay: { signatures: options.signatures ?? [] },
     objects,
     integrity: {

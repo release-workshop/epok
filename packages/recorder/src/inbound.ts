@@ -8,6 +8,8 @@ import {
   expectsInboundBody,
   installInboundBodyCapture,
   installResponseCapture,
+  freezeCapture,
+  noteInboundTerminal,
   releaseCaptureBytes,
   skipOrElideNodeContentLength,
   waitForBodyReads,
@@ -117,10 +119,14 @@ export function installInboundAttach(deps: InboundAttachDeps): () => void {
         });
       };
       res.once("finish", () => {
+        noteInboundTerminal(buf, res);
         observeResponse(ctx, req, res, hooks, emit);
         settle();
       });
-      res.once("close", settle);
+      res.once("close", () => {
+        if (res.headersSent) noteInboundTerminal(buf, res);
+        settle();
+      });
 
       try {
         return Reflect.apply(originalEmit, this, [event, ...args]) as boolean;
@@ -161,6 +167,7 @@ async function settleAndEnqueue(input: {
     queue,
   } = input;
   try {
+    freezeCapture(buf);
     await waitForBodyReads(buf);
 
     if (buf.dropped) {
@@ -175,10 +182,11 @@ async function settleAndEnqueue(input: {
     if (res.errored != null) {
       buf.terminalHostError = true;
     }
+    if (res.headersSent) noteInboundTerminal(buf, res);
 
     if (
       !shouldPersistInteraction(captureMode, {
-        status: buf.statusCode,
+        ...(buf.statusCode !== undefined ? { status: buf.statusCode } : {}),
         terminalHostError: buf.terminalHostError,
       })
     ) {

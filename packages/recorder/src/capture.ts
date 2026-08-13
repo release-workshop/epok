@@ -5,7 +5,6 @@ import type {
   ObservedCapture,
   ObservedDependency,
   ObservedHttpRequest,
-  ObservedHttpResponse,
 } from "./finalize.js";
 import type { PressureController } from "./pressure.js";
 
@@ -13,8 +12,11 @@ export interface CaptureBuffers {
   inboundBody: Uint8Array;
   responseBody: Uint8Array;
   responseHeaders: HeaderField[];
-  statusCode: number;
+  /** Observed inbound status; unset until headers/end are seen. */
+  statusCode?: number;
   statusText: string;
+  /** True once inbound terminal was observed (finish / end / headers sent). */
+  inboundTerminalObserved: boolean;
   dependencies: ObservedDependency[];
   /** Monotonic ms from Interaction start. */
   startedAt: number;
@@ -30,6 +32,8 @@ export interface CaptureBuffers {
   interactionId?: string;
   /** Uncaught/terminal host failure (destroy/errored/sync throw). */
   terminalHostError: boolean;
+  /** True after inbound terminal settle; outbound must not mutate rows. */
+  frozen: boolean;
   bodyWaiters: Array<() => void>;
 }
 
@@ -43,8 +47,9 @@ export function createCaptureBuffers(): CaptureBuffers {
     inboundBody: new Uint8Array(),
     responseBody: new Uint8Array(),
     responseHeaders: [],
-    statusCode: 200,
     statusText: "",
+    inboundTerminalObserved: false,
+    frozen: false,
     dependencies: [],
     startedAt: performance.now(),
     responseStartedAt: 0,
@@ -126,6 +131,25 @@ export function markDropped(buf: CaptureBuffers, reason: string): void {
   buf.dropReason = reason;
 }
 
+/** Record that the inbound response terminal was observed (finish/end/headers). */
+export function noteInboundTerminal(
+  buf: CaptureBuffers,
+  res: ServerResponse,
+): void {
+  if (buf.inboundTerminalObserved && buf.statusCode !== undefined) return;
+  buf.inboundTerminalObserved = true;
+  buf.statusCode = res.statusCode;
+  buf.statusText = res.statusMessage || buf.statusText;
+  if (buf.responseHeaders.length === 0) {
+    buf.responseHeaders = headersToFields(
+      res.getHeaders() as IncomingMessage["headers"],
+    );
+  }
+  if (buf.responseEndedAt === 0) {
+    buf.responseEndedAt = performance.now() - buf.startedAt;
+  }
+}
+
 export function beginBodyRead(buf: CaptureBuffers): void {
   buf.pendingBodyReads += 1;
 }
@@ -143,6 +167,32 @@ export function waitForBodyReads(buf: CaptureBuffers): Promise<void> {
   return new Promise((resolve) => {
     buf.bodyWaiters.push(resolve);
   });
+}
+
+/**
+ * Freeze the capture at inbound terminal. In-flight fetches keep their
+ * invoke-time row; later completion must not patch it.
+ */
+export function freezeCapture(buf: CaptureBuffers): void {
+  if (buf.frozen) return;
+  buf.frozen = true;
+  const terminalAt = Math.max(
+    0,
+    Math.round(
+      buf.responseEndedAt > 0
+        ? buf.responseEndedAt
+        : performance.now() - buf.startedAt,
+    ),
+  );
+  for (const dep of buf.dependencies) {
+    if (
+      dep.response === null &&
+      dep.error === undefined &&
+      !dep.networkReturned
+    ) {
+      dep.endedAt = Math.max(dep.startedAt, terminalAt);
+    }
+  }
 }
 
 /**
@@ -380,6 +430,7 @@ export function installResponseCapture(
         res.getHeaders() as IncomingMessage["headers"],
       );
       buf.responseEndedAt = performance.now() - buf.startedAt;
+      buf.inboundTerminalObserved = true;
     } catch {
       // Fail-open.
     }
@@ -435,24 +486,25 @@ export function buildObservedCapture(
         : null,
   };
 
-  const response: ObservedHttpResponse & {
-    startedAt: number;
-    endedAt: number;
-  } = {
-    protocol: `HTTP/${req.httpVersion}`,
-    status: buf.statusCode,
-    headers: buf.responseHeaders,
-    body: buf.responseBody,
-    contentType:
-      buf.responseHeaders.find((h) => h.name.toLowerCase() === "content-type")
-        ?.value ?? null,
-    startedAt: Math.max(0, Math.round(buf.responseStartedAt)),
-    endedAt: Math.max(
-      Math.round(buf.responseStartedAt),
-      Math.round(buf.responseEndedAt),
-    ),
-    ...(buf.statusText ? { statusText: buf.statusText } : {}),
-  };
+  const response =
+    buf.inboundTerminalObserved && buf.statusCode !== undefined
+      ? {
+          protocol: `HTTP/${req.httpVersion}`,
+          status: buf.statusCode,
+          headers: buf.responseHeaders,
+          body: buf.responseBody,
+          contentType:
+            buf.responseHeaders.find(
+              (h) => h.name.toLowerCase() === "content-type",
+            )?.value ?? null,
+          startedAt: Math.max(0, Math.round(buf.responseStartedAt)),
+          endedAt: Math.max(
+            Math.round(buf.responseStartedAt),
+            Math.round(buf.responseEndedAt),
+          ),
+          ...(buf.statusText ? { statusText: buf.statusText } : {}),
+        }
+      : null;
 
   return {
     id: interactionId,

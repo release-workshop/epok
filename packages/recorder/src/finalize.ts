@@ -45,6 +45,8 @@ export interface ObservedDependency {
   request: ObservedHttpRequest;
   response: ObservedHttpResponse | null;
   error?: DependencyError;
+  /** Fetch returned; body capture may still be in flight. Not persisted. */
+  networkReturned?: boolean;
 }
 
 /** Pre-sanitize capture buffer ready for finalize. */
@@ -53,10 +55,12 @@ export interface ObservedCapture {
   capturedAt: string;
   inbound: ObservedHttpRequest;
   dependencies: readonly ObservedDependency[];
-  response: ObservedHttpResponse & {
-    startedAt: number;
-    endedAt: number;
-  };
+  response:
+    | (ObservedHttpResponse & {
+        startedAt: number;
+        endedAt: number;
+      })
+    | null;
   recorder?: RecorderIdentity;
   runtime?: RuntimeIdentity;
   captureMode?: string;
@@ -360,7 +364,7 @@ function assembleManifest(input: {
   sanitizer: Sanitizer;
   inbound: HttpRequestMessage;
   dependencies: Dependency[];
-  response: InteractionResponse;
+  response: InteractionResponse | null;
   objects: Record<string, EmbeddedObject>;
   integrityObjects: IntegrityObjectEntry[];
 }): InteractionManifest {
@@ -425,16 +429,13 @@ export function finalizeObservation(
       capture.dependencies,
       acc,
     );
-    const responseMessage = sanitizeResponseMessage(
-      sanitizer,
-      capture.response,
-      acc,
-    );
-    const response: InteractionResponse = {
-      ...responseMessage,
-      startedAt: capture.response.startedAt,
-      endedAt: capture.response.endedAt,
-    };
+    const response: InteractionResponse | null = capture.response
+      ? {
+          ...sanitizeResponseMessage(sanitizer, capture.response, acc),
+          startedAt: capture.response.startedAt,
+          endedAt: capture.response.endedAt,
+        }
+      : null;
 
     const manifest = assembleManifest({
       capture,

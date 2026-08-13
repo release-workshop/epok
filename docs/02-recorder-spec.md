@@ -64,7 +64,7 @@ Each inbound HTTP request owns exactly one Interaction lifecycle:
 
 Before finalization, the in-memory Interaction may be mutable. After finalization it is immutable.
 
-Partial or aborted executions may still produce persisted Interactions if sanitization and integrity invariants hold; classification is encoded in metadata, not by changing format rules.
+Partial or aborted executions may still produce persisted Interactions if sanitization and integrity invariants hold. Incompleteness is `response: null` and/or unterminated dependency rows (`response: null` and no `error`), not a metadata classification.
 
 ---
 

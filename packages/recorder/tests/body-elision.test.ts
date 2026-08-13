@@ -58,8 +58,8 @@ describe("attachRecorder body-elision shed", () => {
 
     await handle.drain(2_000);
 
-    expect(handle.pressureStats().dropped).toBe(0);
-    expect(handle.pressureStats().elided).toBeGreaterThan(0);
+    expect(handle.stats().dropped).toBe(0);
+    expect(handle.stats().elided).toBeGreaterThan(0);
     const elided = events.filter((e) => e.type === "body_elided");
     expect(elided.length).toBeGreaterThan(0);
     expect(elided.every((e) => e.interactionId !== undefined)).toBe(true);
@@ -72,9 +72,9 @@ describe("attachRecorder body-elision shed", () => {
     const manifest = JSON.parse(
       new TextDecoder().decode(bytes),
     ) as InteractionManifest;
-    expect(manifest.response.body.cas.hash).toBe(EMPTY_BODY_SHA256);
-    expect(manifest.response.body.cas.size).toBe(0);
-    expect(manifest.response.status).toBe(200);
+    expect(manifest.response?.body.cas.hash).toBe(EMPTY_BODY_SHA256);
+    expect(manifest.response?.body.cas.size).toBe(0);
+    expect(manifest.response?.status).toBe(200);
 
     const validated = await validateReplay({ storage, interactionId: id });
     expect(validated.ok).toBe(true);
@@ -119,8 +119,8 @@ describe("attachRecorder body-elision shed", () => {
     const manifest = JSON.parse(
       new TextDecoder().decode(first),
     ) as InteractionManifest;
-    expect(manifest.response.body.cas.hash).toBe(EMPTY_BODY_SHA256);
-    expect(manifest.response.body.cas.size).toBe(0);
+    expect(manifest.response?.body.cas.hash).toBe(EMPTY_BODY_SHA256);
+    expect(manifest.response?.body.cas.size).toBe(0);
   });
 
   it("drops the Interaction on byte-budget pressure when body elision is disabled", async () => {
@@ -155,7 +155,7 @@ describe("attachRecorder body-elision shed", () => {
 
     await handle.drain(2_000);
 
-    expect(handle.pressureStats().dropped).toBeGreaterThan(0);
+    expect(handle.stats().dropped).toBeGreaterThan(0);
     expect(storage.manifests.size).toBe(0);
     expect(
       events.some(
@@ -202,8 +202,8 @@ describe("attachRecorder body-elision shed", () => {
 
     await handle.drain(3_000);
 
-    expect(handle.pressureStats().observed).toBe(20);
-    expect(handle.pressureStats().dropped).toBe(0);
+    expect(handle.stats().observed).toBe(20);
+    expect(handle.stats().dropped).toBe(0);
     expect(events.some((e) => e.type === "body_elided")).toBe(true);
     expect(storage.manifests.size).toBe(20);
 
@@ -211,7 +211,7 @@ describe("attachRecorder body-elision shed", () => {
       const manifest = JSON.parse(
         new TextDecoder().decode(bytes),
       ) as InteractionManifest;
-      expect(manifest.response.body.cas.hash).toBe(EMPTY_BODY_SHA256);
+      expect(manifest.response?.body.cas.hash).toBe(EMPTY_BODY_SHA256);
       const validated = await validateReplay({ storage, interactionId: id });
       expect(validated.ok).toBe(true);
     }
@@ -268,7 +268,7 @@ describe("attachRecorder body-elision shed", () => {
       .find((manifest) => manifest.dependencies.length > 0);
     expect(appManifest).toBeDefined();
     if (appManifest === undefined) return;
-    expect(appManifest.response.body.cas.hash).toBe(EMPTY_BODY_SHA256);
+    expect(appManifest.response?.body.cas.hash).toBe(EMPTY_BODY_SHA256);
     const dep = appManifest.dependencies[0];
     expect(dep).toBeDefined();
     if (dep === undefined) return;

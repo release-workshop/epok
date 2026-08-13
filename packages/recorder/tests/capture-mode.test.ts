@@ -64,6 +64,16 @@ describe("shouldPersistInteraction", () => {
         terminalHostError: true,
       }),
     ).toBe(true);
+    expect(
+      shouldPersistInteraction("errors", {
+        terminalHostError: false,
+      }),
+    ).toBe(false);
+    expect(
+      shouldPersistInteraction("full", {
+        terminalHostError: false,
+      }),
+    ).toBe(true);
   });
 
   it("defaults attach captureMode to errors", () => {
@@ -137,7 +147,7 @@ describe("attachRecorder captureMode", () => {
       new TextDecoder().decode(bytes),
     ) as InteractionManifest;
     expect(manifest.metadata.captureMode).toBe("errors");
-    expect(manifest.response.status).toBe(500);
+    expect(manifest.response?.status).toBe(500);
   });
 
   it("full mode persists 200 and stamps captureMode full", async () => {
