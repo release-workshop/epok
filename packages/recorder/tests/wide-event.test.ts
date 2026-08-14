@@ -13,46 +13,21 @@ describe("createWideEventEmit", () => {
     expect(createWideEventEmit(undefined)).toBeUndefined();
   });
 
-  it("skips constructing filtered chatter under ops via includes()", () => {
-    const ops = createWideEventEmit(() => {
-      /* unused */
-    }, "ops");
-    expect(ops?.includes("observed")).toBe(false);
-    expect(ops?.includes("context_missing")).toBe(false);
-    expect(ops?.includes("interaction_dropped")).toBe(true);
-    expect(ops?.includes("body_elided")).toBe(true);
-
-    const all = createWideEventEmit(() => {
-      /* unused */
-    }, "all");
-    expect(all?.includes("observed")).toBe(true);
-    expect(all?.includes("context_missing")).toBe(true);
-  });
-
-  it("does not deliver filtered events to onEvent", () => {
-    const delivered: RecorderWideEvent["type"][] = [];
-    const emit = createWideEventEmit((event) => {
-      delivered.push(event.type);
-    }, "ops");
-
-    emit?.({
-      type: "observed",
-      phase: "inbound",
-      interactionId: "x",
-      method: "GET",
-      url: "http://127.0.0.1/",
+  it("swallows subscriber throws", () => {
+    const emit = createWideEventEmit(() => {
+      throw new Error("sink boom");
     });
-    emit?.({
-      type: "interaction_dropped",
-      reason: "queue_full",
-      interactionId: "x",
-    });
-
-    expect(delivered).toEqual(["interaction_dropped"]);
+    expect(() =>
+      emit?.({
+        type: "interaction_dropped",
+        reason: "queue_full",
+        interactionId: "x",
+      }),
+    ).not.toThrow();
   });
 });
 
-describe("wide-event category + subscriber gate", () => {
+describe("wide-event ops subscriber", () => {
   let handle: RecorderHandle | undefined;
   let server: Server | undefined;
   let dependencyServer: Server | undefined;
@@ -67,7 +42,7 @@ describe("wide-event category + subscriber gate", () => {
     dependencyServer = undefined;
   });
 
-  it("defaults onEvent to ops category (no observed / context_missing chatter)", async () => {
+  it("delivers context_missing for fetch outside request context", async () => {
     const events: RecorderWideEvent[] = [];
     handle = attachRecorder({
       storage: unusedStorage(),
@@ -83,56 +58,9 @@ describe("wide-event category + subscriber gate", () => {
     await listen(dependencyServer);
     const depBase = addressOf(dependencyServer);
 
-    server = createServer(async (_req, res) => {
-      await fetch(`${depBase}/dep`);
-      res.writeHead(200, { "content-type": "text/plain" });
-      res.end("ok");
-    });
-    await listen(server);
-    const base = addressOf(server);
-
-    expect((await fetch(`${base}/`)).status).toBe(200);
     await fetch(`${depBase}/outside`);
     await handle.drain(2_000);
 
-    expect(events.some((e) => e.type === "observed")).toBe(false);
-    expect(events.some((e) => e.type === "context_missing")).toBe(false);
-    // Process-wide attach also observes the dependency server's inbounds.
-    expect(handle.stats().observed).toBeGreaterThan(0);
-  });
-
-  it("delivers observed and context_missing when onEventCategory is all", async () => {
-    const events: RecorderWideEvent[] = [];
-    handle = attachRecorder({
-      storage: unusedStorage(),
-      onEventCategory: "all",
-      onEvent: (event) => {
-        events.push(event);
-      },
-    });
-
-    dependencyServer = createServer((_req, res) => {
-      res.writeHead(200);
-      res.end("dep");
-    });
-    await listen(dependencyServer);
-    const depBase = addressOf(dependencyServer);
-
-    server = createServer(async (_req, res) => {
-      await fetch(`${depBase}/dep`);
-      res.writeHead(200, { "content-type": "text/plain" });
-      res.end("ok");
-    });
-    await listen(server);
-    const base = addressOf(server);
-
-    expect((await fetch(`${base}/`)).status).toBe(200);
-    await fetch(`${depBase}/outside`);
-    await handle.drain(2_000);
-
-    expect(
-      events.some((e) => e.type === "observed" && e.phase === "inbound"),
-    ).toBe(true);
     expect(
       events.some(
         (e) =>
@@ -143,7 +71,7 @@ describe("wide-event category + subscriber gate", () => {
     ).toBe(true);
   });
 
-  it("still delivers ops events under the default category", async () => {
+  it("still delivers ops events", async () => {
     const events: RecorderWideEvent[] = [];
     handle = attachRecorder({
       storage: {
@@ -178,7 +106,6 @@ describe("wide-event category + subscriber gate", () => {
 
     expect(events.some((e) => e.type === "interaction_finalized")).toBe(true);
     expect(events.some((e) => e.type === "interaction_persisted")).toBe(true);
-    expect(events.some((e) => e.type === "observed")).toBe(false);
   });
 
   it("updates counters without onEvent and keeps the host fail-open when the subscriber throws", async () => {
@@ -220,7 +147,6 @@ describe("wide-event category + subscriber gate", () => {
     handle.detach();
     handle = attachRecorder({
       storage: unusedStorage(),
-      onEventCategory: "all",
       hooks: {
         onInbound() {
           throw new Error("inbound hook boom");
@@ -228,9 +154,7 @@ describe("wide-event category + subscriber gate", () => {
       },
       onEvent: (event) => {
         events.push(event);
-        if (event.type === "observed") {
-          throw new Error("onEvent boom");
-        }
+        throw new Error("onEvent boom");
       },
     });
 

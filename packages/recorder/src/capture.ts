@@ -1,5 +1,5 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
-import type { HeaderField } from "@epok/core";
+import type { HeaderField, RuntimeIdentity } from "@epok/core";
 import type { CaptureMode } from "./capture-mode.js";
 import type {
   ObservedCapture,
@@ -7,6 +7,15 @@ import type {
   ObservedHttpRequest,
 } from "./finalize.js";
 import type { PressureController } from "./pressure.js";
+
+/** Inbound HTTP metadata copied at settle entry — not live request objects. */
+export interface InboundSnapshot {
+  protocol: string;
+  method: string;
+  url: string;
+  headers: HeaderField[];
+  contentType: string | null;
+}
 
 export interface CaptureBuffers {
   inboundBody: Uint8Array;
@@ -35,6 +44,10 @@ export interface CaptureBuffers {
   /** True after inbound terminal settle; outbound must not mutate rows. */
   frozen: boolean;
   bodyWaiters: Array<() => void>;
+  /** Copied at settle entry so the persist job does not retain request objects. */
+  inboundSnapshot?: InboundSnapshot;
+  /** Runtime identity stamped at settle (Fetch adapters). */
+  runtime?: RuntimeIdentity;
 }
 
 export interface RequestCaptureContext {
@@ -468,28 +481,40 @@ export function installInboundBodyCapture(
   };
 }
 
-export function buildObservedCapture(
-  interactionId: string,
-  req: IncomingMessage,
-  buf: CaptureBuffers,
-  captureMode?: CaptureMode,
-): ObservedCapture {
-  const inbound: ObservedHttpRequest = {
+export function inboundSnapshotFromNode(req: IncomingMessage): InboundSnapshot {
+  return {
     protocol: `HTTP/${req.httpVersion}`,
     method: req.method ?? "GET",
     url: nodeRequestUrl(req),
     headers: headersToFields(req.headers),
-    body: buf.inboundBody,
     contentType:
       typeof req.headers["content-type"] === "string"
         ? req.headers["content-type"]
         : null,
   };
+}
+
+export function buildObservedCapture(
+  interactionId: string,
+  buf: CaptureBuffers,
+  captureMode?: CaptureMode,
+): ObservedCapture | null {
+  const snap = buf.inboundSnapshot;
+  if (snap === undefined) return null;
+
+  const inbound: ObservedHttpRequest = {
+    protocol: snap.protocol,
+    method: snap.method,
+    url: snap.url,
+    headers: snap.headers,
+    body: buf.inboundBody,
+    contentType: snap.contentType,
+  };
 
   const response =
     buf.inboundTerminalObserved && buf.statusCode !== undefined
       ? {
-          protocol: `HTTP/${req.httpVersion}`,
+          protocol: snap.protocol,
           status: buf.statusCode,
           headers: buf.responseHeaders,
           body: buf.responseBody,
@@ -513,6 +538,7 @@ export function buildObservedCapture(
     dependencies: buf.dependencies,
     response,
     ...(captureMode !== undefined ? { captureMode } : {}),
+    ...(buf.runtime !== undefined ? { runtime: buf.runtime } : {}),
   };
 }
 

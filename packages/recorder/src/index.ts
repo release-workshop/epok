@@ -9,12 +9,9 @@ import {
   type RecorderPressureLimits,
 } from "./pressure.js";
 import { BoundedAsyncQueue } from "./queue.js";
+import { createSettleTracker } from "./settle.js";
 import { snapshotRecorderStats, type RecorderStats } from "./stats.js";
-import {
-  createWideEventEmit,
-  DEFAULT_ON_EVENT_CATEGORY,
-  type OnEventCategory,
-} from "./wide-event-emit.js";
+import { createWideEventEmit } from "./wide-event-emit.js";
 
 export type { RecorderObservationHooks, StorageProvider };
 export type { CaptureMode } from "./capture-mode.js";
@@ -23,7 +20,6 @@ export {
   shouldPersistInteraction,
 } from "./capture-mode.js";
 export type { RecorderWideEvent } from "./events.js";
-export type { OnEventCategory } from "./wide-event-emit.js";
 export type { RecorderPressureLimits } from "./pressure.js";
 export { DEFAULT_PRESSURE_LIMITS } from "./pressure.js";
 export type { RecorderStats } from "./stats.js";
@@ -65,14 +61,8 @@ export interface AttachRecorderOptions {
    */
   captureMode?: CaptureMode;
   hooks?: RecorderObservationHooks;
-  /** Wide structured self-observation events (opt-in; advanced / harness path). */
+  /** Wide structured recorder-ops events (opt-in). HTTP facts use `hooks`. */
   onEvent?: (event: RecorderWideEvent) => void;
-  /**
-   * Wide-event category when `onEvent` is set.
-   * - `"ops"` (default): queue/shed/drop/elide/finalize/persist/`observation_dropped`
-   * - `"all"`: ops set plus per-request `observed` and `context_missing`
-   */
-  onEventCategory?: OnEventCategory;
   /**
    * Upper bounds for async sanitize/finalize/persist work and capture buffers.
    * Byte-budget pressure elides bodies by default; queue/context pressure still
@@ -102,10 +92,7 @@ export interface RecorderHandle {
 export function attachRecorder(options: AttachRecorderOptions): RecorderHandle {
   const enabled = options.enabled !== false;
   const captureMode = options.captureMode ?? DEFAULT_CAPTURE_MODE;
-  const emit = createWideEventEmit(
-    options.onEvent,
-    options.onEventCategory ?? DEFAULT_ON_EVENT_CATEGORY,
-  );
+  const emit = createWideEventEmit(options.onEvent);
 
   const limits: RecorderPressureLimits = {
     ...DEFAULT_PRESSURE_LIMITS,
@@ -113,6 +100,7 @@ export function attachRecorder(options: AttachRecorderOptions): RecorderHandle {
   };
   const pressure = new PressureController(limits, emit);
   const queue = new BoundedAsyncQueue(pressure);
+  const settles = createSettleTracker();
 
   const restoreInbound = installInboundAttach({
     enabled,
@@ -122,6 +110,9 @@ export function attachRecorder(options: AttachRecorderOptions): RecorderHandle {
     storage: options.storage,
     pressure,
     queue,
+    trackSettle: (promise) => {
+      settles.track(promise);
+    },
   });
   const restoreFetch = installFetchIntercept(
     options.hooks,
@@ -139,8 +130,8 @@ export function attachRecorder(options: AttachRecorderOptions): RecorderHandle {
       restoreInbound();
       queue.close();
     },
-    drain(timeoutMs?: number): Promise<void> {
-      return queue.drain(timeoutMs);
+    drain(timeoutMs = 5_000): Promise<void> {
+      return settles.drain(timeoutMs, queue);
     },
     stats() {
       return snapshotRecorderStats(pressure);

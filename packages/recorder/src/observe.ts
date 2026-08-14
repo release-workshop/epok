@@ -1,47 +1,8 @@
-import type { IncomingMessage, ServerResponse } from "node:http";
 import type { RecorderObservationHooks } from "@epok/core";
 import type { RequestCaptureContext } from "./context.js";
 import type { RecorderWideEvent } from "./events.js";
 
-export type EmitWideEvent = ((event: RecorderWideEvent) => void) & {
-  /**
-   * Whether this subscriber would receive events of `type`.
-   * Callers skip constructing payloads when this returns false.
-   */
-  includes(type: RecorderWideEvent["type"]): boolean;
-};
-
-function headerMap(
-  headers: Headers | IncomingMessage["headers"],
-): Record<string, string> {
-  const out: Record<string, string> = {};
-  if (headers instanceof Headers) {
-    headers.forEach((value, key) => {
-      out[key.toLowerCase()] = value;
-    });
-    return out;
-  }
-  for (const [key, value] of Object.entries(headers)) {
-    if (value === undefined) continue;
-    out[key.toLowerCase()] = Array.isArray(value) ? value.join(", ") : value;
-  }
-  return out;
-}
-
-export function inboundRequestFromNode(req: IncomingMessage): Request {
-  const host = req.headers.host ?? "localhost";
-  const path = req.url ?? "/";
-  const url = `http://${host}${path}`;
-  const headers = new Headers();
-  for (const [key, value] of Object.entries(req.headers)) {
-    if (value === undefined) continue;
-    headers.set(key, Array.isArray(value) ? value.join(", ") : value);
-  }
-  return new Request(url, {
-    method: req.method ?? "GET",
-    headers,
-  });
-}
+export type EmitWideEvent = (event: RecorderWideEvent) => void;
 
 export function safeObserve(
   emit: EmitWideEvent | undefined,
@@ -66,50 +27,25 @@ export function safeObserve(
 
 export function observeInbound(
   ctx: RequestCaptureContext,
-  req: IncomingMessage,
+  request: Request,
   hooks: RecorderObservationHooks | undefined,
   emit: EmitWideEvent | undefined,
 ): void {
-  const emitObserved = emit?.includes("observed") === true;
-  if (!emitObserved && !hooks?.onInbound) return;
+  if (!hooks?.onInbound) return;
   safeObserve(emit, ctx.interactionId, () => {
-    const request = inboundRequestFromNode(req);
-    if (emitObserved) {
-      emit({
-        type: "observed",
-        phase: "inbound",
-        interactionId: ctx.interactionId,
-        method: request.method,
-        url: request.url,
-        requestHeaders: headerMap(request.headers),
-      });
-    }
-    hooks?.onInbound?.(request);
+    hooks.onInbound?.(request);
   });
 }
 
 export function observeResponse(
   ctx: RequestCaptureContext,
-  req: IncomingMessage,
-  res: ServerResponse,
+  response: Response,
   hooks: RecorderObservationHooks | undefined,
   emit: EmitWideEvent | undefined,
 ): void {
-  const emitObserved = emit?.includes("observed") === true;
-  if (!emitObserved && !hooks?.onResponse) return;
+  if (!hooks?.onResponse) return;
   safeObserve(emit, ctx.interactionId, () => {
-    const request = inboundRequestFromNode(req);
-    if (emitObserved) {
-      emit({
-        type: "observed",
-        phase: "response",
-        interactionId: ctx.interactionId,
-        method: request.method,
-        url: request.url,
-        status: res.statusCode,
-      });
-    }
-    hooks?.onResponse?.(new Response(null, { status: res.statusCode }));
+    hooks.onResponse?.(response);
   });
 }
 
@@ -121,35 +57,24 @@ export function observeDependency(
   hooks: RecorderObservationHooks | undefined,
   emit: EmitWideEvent | undefined,
 ): void {
-  const emitObserved = emit?.includes("observed") === true;
-  const emitMissing = emit?.includes("context_missing") === true;
-  if (!emitObserved && !emitMissing && !hooks?.onDependency) return;
-  safeObserve(emit, ctx?.interactionId, () => {
-    const request = new Request(input, init);
-    if (!ctx) {
-      if (emitMissing) {
-        emit({
-          type: "context_missing",
-          phase: "dependency",
-          reason: "no_request_context",
-          method: request.method,
-          url: request.url,
-        });
-      }
-      return;
-    }
-
-    if (emitObserved) {
+  if (!ctx) {
+    if (!emit) return;
+    safeObserve(emit, undefined, () => {
+      const request = new Request(input, init);
       emit({
-        type: "observed",
+        type: "context_missing",
         phase: "dependency",
-        interactionId: ctx.interactionId,
+        reason: "no_request_context",
         method: request.method,
         url: request.url,
-        requestHeaders: headerMap(request.headers),
-        ...(response ? { status: response.status } : {}),
       });
-    }
-    hooks?.onDependency?.(request, response);
+    });
+    return;
+  }
+
+  if (!hooks?.onDependency) return;
+  safeObserve(emit, ctx.interactionId, () => {
+    const request = new Request(input, init);
+    hooks.onDependency?.(request, response);
   });
 }

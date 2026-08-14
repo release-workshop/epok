@@ -47,18 +47,6 @@ export type { Sha256HexFn } from "./storage-verify.js";
 
 export { EMPTY_BODY_SHA256, sha256Hex, sha256HexUtf8 } from "./sha256.js";
 
-export {
-  matchDependency,
-  matchKeyFromDependency,
-  matchSnapshotDependency,
-  urlsMatchIgnoringRedactedSecrets,
-} from "./replay.js";
-export type {
-  ReplayMatchKey,
-  ReplayMatchOptions,
-  SnapshotMatchAttempt,
-} from "./replay.js";
-
 export type {
   DependencyObservationError,
   FetchLike,

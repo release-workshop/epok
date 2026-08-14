@@ -1,7 +1,5 @@
-import { matchDependency, matchSnapshotDependency } from "@epok/core";
 import type { InteractionManifest, StorageProvider } from "@epok/core";
 
-export { matchDependency, matchSnapshotDependency };
 export type { InteractionManifest, StorageProvider };
 
 export type {

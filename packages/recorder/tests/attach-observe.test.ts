@@ -12,7 +12,8 @@ describe("attachRecorder observe-only", () => {
   let server: Server | undefined;
   let dependencyServer: Server | undefined;
 
-  afterEach(() => {
+  afterEach(async () => {
+    await handle?.drain(2_000);
     handle?.detach();
     handle = undefined;
     server?.close();
@@ -22,17 +23,33 @@ describe("attachRecorder observe-only", () => {
   });
 
   it("pairs inbound request with its outbound dependency under concurrency", async () => {
-    const events: RecorderWideEvent[] = [];
+    const pairs: Array<{ inboundId?: string; dependencyId?: string }> = [];
+    const byInteraction = new Map<
+      string,
+      { inboundId?: string; dependencyId?: string }
+    >();
 
     handle = attachRecorder({
       storage: unusedStorage(),
-      onEventCategory: "all",
-      onEvent: (event) => {
-        events.push(event);
+      hooks: {
+        onInbound(request) {
+          const id = request.headers.get("x-request-id");
+          if (id === null) return;
+          const row = byInteraction.get(id) ?? {};
+          row.inboundId = id;
+          byInteraction.set(id, row);
+        },
+        onDependency(request) {
+          const dependencyId = new URL(request.url).searchParams.get("id");
+          if (dependencyId === null) return;
+          const row = byInteraction.get(dependencyId) ?? {};
+          row.dependencyId = dependencyId;
+          byInteraction.set(dependencyId, row);
+        },
       },
     });
 
-    dependencyServer = createServer((req, res) => {
+    dependencyServer = createServer((_req, res) => {
       res.writeHead(200, { "content-type": "text/plain" });
       res.end("dep-ok");
     });
@@ -57,30 +74,11 @@ describe("attachRecorder observe-only", () => {
       ),
     );
 
-    const byInteraction = new Map<
-      string,
-      { inboundId?: string; dependencyId?: string }
-    >();
-
-    for (const event of events) {
-      if (event.type !== "observed") continue;
-      const row = byInteraction.get(event.interactionId) ?? {};
-      if (event.phase === "inbound") {
-        row.inboundId = event.requestHeaders?.["x-request-id"];
-      } else if (event.phase === "dependency") {
-        row.dependencyId =
-          new URL(event.url).searchParams.get("id") ?? undefined;
-      }
-      byInteraction.set(event.interactionId, row);
+    for (const id of ids) {
+      pairs.push(byInteraction.get(id) ?? {});
     }
-
-    // Dependency server inbounds are also observed under process-wide attach;
-    // only app interactions carry both x-request-id and an outbound dependency.
-    const appPairs = [...byInteraction.values()].filter(
-      (row) => row.inboundId !== undefined && row.dependencyId !== undefined,
-    );
-    expect(appPairs).toHaveLength(20);
-    for (const row of appPairs) {
+    expect(pairs).toHaveLength(20);
+    for (const row of pairs) {
       expect(row.dependencyId).toBe(row.inboundId);
     }
   });
@@ -90,7 +88,6 @@ describe("attachRecorder observe-only", () => {
 
     handle = attachRecorder({
       storage: unusedStorage(),
-      onEventCategory: "all",
       hooks: {
         onInbound() {
           throw new Error("inbound hook boom");
@@ -104,9 +101,7 @@ describe("attachRecorder observe-only", () => {
       },
       onEvent: (event) => {
         events.push(event);
-        if (event.type === "observed") {
-          throw new Error("onEvent boom");
-        }
+        throw new Error("onEvent boom");
       },
     });
 
@@ -141,7 +136,6 @@ describe("attachRecorder observe-only", () => {
 
     handle = attachRecorder({
       storage: unusedStorage(),
-      onEventCategory: "all",
       onEvent: (event) => {
         events.push(event);
       },

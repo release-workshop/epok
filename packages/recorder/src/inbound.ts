@@ -2,28 +2,37 @@ import * as http from "node:http";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { RecorderObservationHooks, StorageProvider } from "@epok/core";
 import type { CaptureMode } from "./capture-mode.js";
-import { shouldPersistInteraction } from "./capture-mode.js";
 import {
-  buildObservedCapture,
   expectsInboundBody,
+  inboundSnapshotFromNode,
   installInboundBodyCapture,
   installResponseCapture,
-  freezeCapture,
   noteInboundTerminal,
-  releaseCaptureBytes,
   skipOrElideNodeContentLength,
-  waitForBodyReads,
-  type CaptureBuffers,
 } from "./capture.js";
 import { createCaptureContext, requestContext } from "./context.js";
-import { finalizeObservation } from "./finalize.js";
 import type { EmitWideEvent } from "./observe.js";
 import { observeInbound, observeResponse } from "./observe.js";
-import { persistFinalizedInteraction } from "./persist.js";
 import type { PressureController } from "./pressure.js";
 import type { BoundedAsyncQueue } from "./queue.js";
+import { settleInteraction } from "./settle.js";
 
 type ServerEmit = typeof http.Server.prototype.emit;
+
+function inboundRequestFromNode(req: IncomingMessage): Request {
+  const host = req.headers.host ?? "localhost";
+  const path = req.url ?? "/";
+  const url = `http://${host}${path}`;
+  const headers = new Headers();
+  for (const [key, value] of Object.entries(req.headers)) {
+    if (value === undefined) continue;
+    headers.set(key, Array.isArray(value) ? value.join(", ") : value);
+  }
+  return new Request(url, {
+    method: req.method ?? "GET",
+    headers,
+  });
+}
 
 export interface InboundAttachDeps {
   /** When false, wrappers + ALS stay active but capture/persist are skipped. */
@@ -34,6 +43,7 @@ export interface InboundAttachDeps {
   storage: StorageProvider;
   pressure: PressureController;
   queue: BoundedAsyncQueue;
+  trackSettle: (promise: Promise<void>) => void;
 }
 
 /**
@@ -42,7 +52,16 @@ export interface InboundAttachDeps {
  * Returns a restore function.
  */
 export function installInboundAttach(deps: InboundAttachDeps): () => void {
-  const { enabled, captureMode, hooks, emit, storage, pressure, queue } = deps;
+  const {
+    enabled,
+    captureMode,
+    hooks,
+    emit,
+    storage,
+    pressure,
+    queue,
+    trackSettle,
+  } = deps;
   const originalEmit: ServerEmit = Reflect.get(http.Server.prototype, "emit");
 
   function patchedEmit(
@@ -75,9 +94,14 @@ export function installInboundAttach(deps: InboundAttachDeps): () => void {
         : "active_contexts_budget";
       pressure.recordDrop(reason, ctx.interactionId);
       return requestContext.run(ctx, () => {
-        observeInbound(ctx, req, hooks, emit);
+        observeInbound(ctx, inboundRequestFromNode(req), hooks, emit);
         res.once("finish", () => {
-          observeResponse(ctx, req, res, hooks, emit);
+          observeResponse(
+            ctx,
+            new Response(null, { status: res.statusCode }),
+            hooks,
+            emit,
+          );
         });
         return Reflect.apply(originalEmit, this, [event, ...args]) as boolean;
       });
@@ -100,27 +124,42 @@ export function installInboundAttach(deps: InboundAttachDeps): () => void {
         // Fail-open.
       }
 
-      observeInbound(ctx, req, hooks, emit);
+      observeInbound(ctx, inboundRequestFromNode(req), hooks, emit);
 
       let settled = false;
       const settle = (): void => {
         if (settled) return;
         settled = true;
-        void settleAndEnqueue({
-          interactionId: ctx.interactionId,
-          req,
-          res,
-          buf,
-          captureMode,
-          emit,
-          storage,
-          pressure,
-          queue,
-        });
+        trackSettle(
+          settleInteraction({
+            interactionId: ctx.interactionId,
+            buf,
+            inbound: inboundSnapshotFromNode(req),
+            captureMode,
+            emit,
+            storage,
+            pressure,
+            queue,
+            deferOffHotPath: (work) => {
+              setImmediate(work);
+            },
+            refreshTerminal: () => {
+              if (res.errored != null) {
+                buf.terminalHostError = true;
+              }
+              if (res.headersSent) noteInboundTerminal(buf, res);
+            },
+          }),
+        );
       };
       res.once("finish", () => {
         noteInboundTerminal(buf, res);
-        observeResponse(ctx, req, res, hooks, emit);
+        observeResponse(
+          ctx,
+          new Response(null, { status: res.statusCode }),
+          hooks,
+          emit,
+        );
         settle();
       });
       res.once("close", () => {
@@ -142,127 +181,4 @@ export function installInboundAttach(deps: InboundAttachDeps): () => void {
   return () => {
     http.Server.prototype.emit = originalEmit;
   };
-}
-
-async function settleAndEnqueue(input: {
-  interactionId: string;
-  req: IncomingMessage;
-  res: ServerResponse;
-  buf: CaptureBuffers;
-  captureMode: CaptureMode;
-  emit: EmitWideEvent | undefined;
-  storage: StorageProvider;
-  pressure: PressureController;
-  queue: BoundedAsyncQueue;
-}): Promise<void> {
-  const {
-    interactionId,
-    req,
-    res,
-    buf,
-    captureMode,
-    emit,
-    storage,
-    pressure,
-    queue,
-  } = input;
-  try {
-    freezeCapture(buf);
-    await waitForBodyReads(buf);
-
-    if (buf.dropped) {
-      if (buf.dropReason === "buffered_bytes_budget") {
-        pressure.recordDrop("buffered_bytes_budget", interactionId);
-      }
-      releaseCaptureBytes(pressure, buf);
-      pressure.releaseContext();
-      return;
-    }
-
-    if (res.errored != null) {
-      buf.terminalHostError = true;
-    }
-    if (res.headersSent) noteInboundTerminal(buf, res);
-
-    if (
-      !shouldPersistInteraction(captureMode, {
-        ...(buf.statusCode !== undefined ? { status: buf.statusCode } : {}),
-        terminalHostError: buf.terminalHostError,
-      })
-    ) {
-      scheduleCaptureModeDrop({
-        interactionId,
-        reservedBytes: buf.reservedBytes,
-        emit,
-        pressure,
-      });
-      buf.reservedBytes = 0;
-      return;
-    }
-
-    const reservedForJob = buf.reservedBytes;
-    buf.reservedBytes = 0;
-
-    const enqueued = queue.tryEnqueue(async () => {
-      try {
-        const capture = buildObservedCapture(
-          interactionId,
-          req,
-          buf,
-          captureMode,
-        );
-        const finalized = finalizeObservation(capture, {
-          ...(emit ? { onEvent: emit } : {}),
-          onFinalized: () => {
-            pressure.recordFinalized();
-          },
-        });
-        if (finalized === null) {
-          return;
-        }
-        await persistFinalizedInteraction(storage, finalized, emit, () => {
-          pressure.recordPersisted();
-        });
-      } finally {
-        pressure.releaseBytes(reservedForJob);
-        pressure.releaseContext();
-      }
-    });
-
-    if (!enqueued) {
-      pressure.releaseBytes(reservedForJob);
-      pressure.releaseContext();
-      pressure.recordDrop("queue_full", interactionId);
-    }
-  } catch {
-    try {
-      releaseCaptureBytes(pressure, buf);
-      pressure.releaseContext();
-    } catch {
-      // Fail-open.
-    }
-  }
-}
-
-/** Off hot path, without consuming persist queue depth. */
-function scheduleCaptureModeDrop(input: {
-  interactionId: string;
-  reservedBytes: number;
-  emit: EmitWideEvent | undefined;
-  pressure: PressureController;
-}): void {
-  const { interactionId, reservedBytes, emit, pressure } = input;
-  setImmediate(() => {
-    try {
-      pressure.recordFiltered();
-      emit?.({
-        type: "interaction_dropped",
-        reason: "capture_mode_filter",
-        interactionId,
-      });
-    } finally {
-      pressure.releaseBytes(reservedBytes);
-      pressure.releaseContext();
-    }
-  });
 }

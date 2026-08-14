@@ -91,9 +91,7 @@ describe("attachBunRecorder", () => {
       },
       onEvent: (event) => {
         events.push(event);
-        if (event.type === "observed") {
-          throw new Error("onEvent boom");
-        }
+        throw new Error("onEvent boom");
       },
     });
 

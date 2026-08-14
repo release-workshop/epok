@@ -9,7 +9,6 @@ import {
 export type { CaptureMode } from "./capture-mode.js";
 export type { RecorderObservationHooks, StorageProvider };
 export type { RecorderWideEvent } from "./events.js";
-export type { OnEventCategory } from "./wide-event-emit.js";
 export type { RecorderPressureLimits } from "./pressure.js";
 export type { RecorderStats } from "./stats.js";
 export { startStatsExporter, statsCounterDeltas } from "./stats-exporter.js";

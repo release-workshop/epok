@@ -10,7 +10,7 @@ Consumes stored **Interactions** for executable re-run, snapshot/mock fixtures, 
 - Validate integrity / compatibility without full re-execution
 - Defaults: strict matching (fail-fast), instant timing; `diagnostic-lenient` selectable for investigation; `realtime` timing paces dependency completion from recorded timings
 
-Matching helpers live in `@epok/core` (`matchDependency` for executable; `matchSnapshotDependency` for snapshot). Executable matching stays MVP-compatible (unique method+URL), and uses selected non-secret headers + body hash to disambiguate identical method+URL rows. Auth/cookie headers and redacted values are never match material; redacted query values are ignored when comparing URLs.
+Matching lives in this package (unused-pool consumption, seq retries, snapshot, diagnostic-lenient). Executable matching stays MVP-compatible (unique method+URL), and uses selected non-secret headers + body hash to disambiguate identical method+URL rows. Auth/cookie headers and redacted values are never match material; redacted query values are ignored when comparing URLs.
 
 ## Modes
 

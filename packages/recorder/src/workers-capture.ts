@@ -1,5 +1,3 @@
-import type { CaptureMode } from "./capture-mode.js";
-import type { RuntimeIdentity } from "@epok/core";
 import {
   beginBodyRead,
   endBodyRead,
@@ -8,8 +6,8 @@ import {
   takeCapturedBytes,
   teeFetchResponseBody,
   type CaptureBuffers,
+  type InboundSnapshot,
 } from "./capture.js";
-import type { ObservedCapture } from "./finalize.js";
 import type { PressureController } from "./pressure.js";
 
 export function expectsFetchInboundBody(request: Request): boolean {
@@ -86,55 +84,12 @@ export function captureFetchResponse(
   return teed.response;
 }
 
-export function buildObservedCaptureFromFetch(
-  interactionId: string,
-  request: Request,
-  response: Response | null,
-  buf: CaptureBuffers,
-  captureMode?: CaptureMode,
-  runtime?: RuntimeIdentity,
-): ObservedCapture {
-  const inbound = {
+export function inboundSnapshotFromFetch(request: Request): InboundSnapshot {
+  return {
     protocol: "HTTP/1.1",
     method: request.method,
     url: request.url,
     headers: headersToFields(request.headers),
-    body: buf.inboundBody,
     contentType: request.headers.get("content-type"),
-  };
-
-  const status = response?.status ?? buf.statusCode;
-  const responseMessage: ObservedCapture["response"] =
-    response !== null && status !== undefined
-      ? {
-          protocol: "HTTP/1.1",
-          status,
-          headers: buf.responseHeaders,
-          body: buf.responseBody,
-          contentType:
-            buf.responseHeaders.find(
-              (h) => h.name.toLowerCase() === "content-type",
-            )?.value ??
-            response.headers.get("content-type") ??
-            null,
-          startedAt: Math.max(0, Math.round(buf.responseStartedAt)),
-          endedAt: Math.max(
-            Math.round(buf.responseStartedAt),
-            Math.round(buf.responseEndedAt),
-          ),
-          ...(buf.statusText || response.statusText
-            ? { statusText: buf.statusText || response.statusText }
-            : {}),
-        }
-      : null;
-
-  return {
-    id: interactionId,
-    capturedAt: new Date().toISOString(),
-    inbound,
-    dependencies: buf.dependencies,
-    response: responseMessage,
-    ...(captureMode !== undefined ? { captureMode } : {}),
-    ...(runtime !== undefined ? { runtime } : {}),
   };
 }

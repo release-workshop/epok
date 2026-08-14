@@ -24,6 +24,10 @@ _Avoid_: span, child request (as the artifact term)
 The interface that persists and retrieves manifests and CAS objects. May record multiple capture ids against one manifest hash; that occurrence index is not part of the Interaction artifact. Remote providers are configured explicitly; there is no default hosted endpoint in this repository.
 _Avoid_: database, SaaS (as a synonym for this interface)
 
+**Observation**:
+The Fetch-shaped view of the inbound request, outbound Dependencies, and host response while an Interaction is being captured. Not the Interaction artifact, and not a telemetry backend.
+_Avoid_: trace, span, telemetry (as the Epok term)
+
 **Projection**:
 A derived view over an Interaction for humans or tools. Not an alternative storage format.
 _Avoid_: export format (when meaning the canonical artifact)

@@ -1,15 +1,16 @@
 import {
-  matchDependency,
-  matchSnapshotDependency,
-  urlsMatchIgnoringRedactedSecrets,
   type Dependency,
   type HeaderField,
   type InteractionManifest,
-  type ReplayMatchKey,
   type StorageProvider,
 } from "@epok/core";
 import { createHash } from "node:crypto";
 import { headersFromFields, resolveCasBytes } from "./load.js";
+import {
+  MatchPool,
+  type DependencyMatchMode,
+  type OutboundMatchAttempt,
+} from "./matching.js";
 import type { ReplayMismatch, ReplayTimingMode } from "./types.js";
 
 /** Timer-resolution floor before a late completion is recorded as a timing note. */
@@ -72,94 +73,6 @@ function headerFieldsFromHeaders(headers: Headers): HeaderField[] {
   return fields;
 }
 
-function withUpperMethod(dependency: Dependency): Dependency {
-  return {
-    ...dependency,
-    request: {
-      ...dependency.request,
-      method: dependency.request.method.toUpperCase(),
-    },
-  };
-}
-
-/**
- * Strict match among unused rows: method + URL (MVP), richer signature fields
- * when ambiguous, then lowest unused `seq` for identical retries.
- */
-function matchUnusedDependencyStrict(
-  unused: ReadonlyMap<number, Dependency>,
-  attempt: ReplayMatchKey,
-): Dependency | undefined {
-  const normalized = [...unused.values()].map(withUpperMethod);
-  const matched = matchDependency(normalized, attempt);
-  if (matched) return unused.get(matched.seq);
-
-  const sameKey = normalized
-    .filter(
-      (dep) =>
-        dep.request.method === attempt.method &&
-        urlsMatchIgnoringRedactedSecrets(dep.request.url, attempt.url),
-    )
-    .sort((a, b) => a.seq - b.seq);
-  const next = sameKey[0];
-  if (next === undefined) return undefined;
-
-  const bySeq = matchDependency(normalized, attempt, { seq: next.seq });
-  if (!bySeq) return undefined;
-  return unused.get(bySeq.seq);
-}
-
-/**
- * Snapshot hybrid match among unused rows (signature → seq).
- */
-function matchUnusedDependencySnapshot(
-  unused: ReadonlyMap<number, Dependency>,
-  attempt: {
-    method: string;
-    url: string;
-    headers: HeaderField[];
-    bodyHash?: string;
-  },
-): Dependency | undefined {
-  const pool = [...unused.values()].map(withUpperMethod);
-  const matched = matchSnapshotDependency(pool, attempt);
-  if (!matched) return undefined;
-  return unused.get(matched.seq);
-}
-
-/**
- * Lenient: strict method+URL first; else lowest-seq unused same-method row.
- * Soft miss returns the dependency plus an actionable diagnostic.
- */
-function matchUnusedDependencyLenient(
-  unused: ReadonlyMap<number, Dependency>,
-  attempt: { method: string; url: string },
-): { dependency: Dependency; softMismatch?: ReplayMismatch } | undefined {
-  const strict = matchUnusedDependencyStrict(unused, attempt);
-  if (strict) return { dependency: strict };
-
-  const sameMethod = [...unused.values()]
-    .map(withUpperMethod)
-    .filter((dep) => dep.request.method === attempt.method)
-    .sort((a, b) => a.seq - b.seq);
-  const next = sameMethod[0];
-  if (next === undefined) return undefined;
-
-  const dependency = unused.get(next.seq);
-  if (!dependency) return undefined;
-
-  return {
-    dependency,
-    softMismatch: {
-      code: "dependency_mismatch",
-      message: `relaxed match for ${attempt.method} ${attempt.url} → recorded ${dependency.request.url} (seq=${dependency.seq})`,
-      method: attempt.method,
-      url: attempt.url,
-      dependencySeq: dependency.seq,
-    },
-  };
-}
-
 async function responseFromDependency(
   storage: StorageProvider,
   manifest: InteractionManifest,
@@ -201,17 +114,12 @@ export interface FetchInjection {
   takeTimingNotes: () => string[];
 }
 
-export type DependencyMatchMode = "strict" | "snapshot" | "diagnostic-lenient";
+export type { DependencyMatchMode };
 
 async function attemptFromFetchArgs(
   input: RequestInfo | URL,
   init?: RequestInit,
-): Promise<{
-  method: string;
-  url: string;
-  headers: HeaderField[];
-  bodyHash?: string;
-}> {
+): Promise<OutboundMatchAttempt> {
   const method = requestMethod(input, init);
   const url = requestUrl(input);
   const headers = new Headers(
@@ -237,12 +145,7 @@ async function attemptFromFetchArgs(
       bodyHash = createHash("sha256").update(bytes).digest("hex");
     }
   }
-  const attempt: {
-    method: string;
-    url: string;
-    headers: HeaderField[];
-    bodyHash?: string;
-  } = {
+  const attempt: OutboundMatchAttempt = {
     method,
     url,
     headers: headerFieldsFromHeaders(headers),
@@ -262,28 +165,6 @@ function dependencyMismatch(method: string, url: string): ReplayMismatch {
   };
 }
 
-type ExecutableMatch = {
-  dependency: Dependency | undefined;
-  softMismatch?: ReplayMismatch;
-};
-
-function matchExecutableAttempt(
-  matching: Exclude<DependencyMatchMode, "snapshot">,
-  unused: ReadonlyMap<number, Dependency>,
-  attempt: ReplayMatchKey,
-): ExecutableMatch {
-  if (matching === "diagnostic-lenient") {
-    const lenient = matchUnusedDependencyLenient(unused, attempt);
-    if (!lenient) return { dependency: undefined };
-    const result: ExecutableMatch = { dependency: lenient.dependency };
-    if (lenient.softMismatch !== undefined) {
-      result.softMismatch = lenient.softMismatch;
-    }
-    return result;
-  }
-  return { dependency: matchUnusedDependencyStrict(unused, attempt) };
-}
-
 /**
  * Install a `fetch` interceptor that injects recorded dependency responses.
  * Instant timing: responses resolve as soon as matching succeeds.
@@ -299,9 +180,7 @@ export function installDependencyInjection(options: {
   const { storage, manifest } = options;
   const matching: DependencyMatchMode = options.matching ?? "strict";
   const timing: ReplayTimingMode = options.timing ?? "instant";
-  const unused = new Map(
-    manifest.dependencies.map((dep) => [dep.seq, dep] as const),
-  );
+  const pool = new MatchPool(manifest.dependencies, matching);
   const mismatches: ReplayMismatch[] = [];
   const timingNotes: string[] = [];
   let hardMismatch = false;
@@ -320,34 +199,23 @@ export function installDependencyInjection(options: {
     }
 
     const fetchStartedAt = performance.now();
-    let dependency: Dependency | undefined;
-    let method: string;
-    let url: string;
+    const attempt = await attemptFromFetchArgs(input, init);
+    const matched = pool.match(attempt);
+    const method = attempt.method;
+    const url = attempt.url;
 
-    if (matching === "snapshot") {
-      const attempt = await attemptFromFetchArgs(input, init);
-      method = attempt.method;
-      url = attempt.url;
-      dependency = matchUnusedDependencySnapshot(unused, attempt);
-    } else {
-      const attempt = await attemptFromFetchArgs(input, init);
-      method = attempt.method;
-      url = attempt.url;
-      const matched = matchExecutableAttempt(matching, unused, attempt);
-      dependency = matched.dependency;
-      if (matched.softMismatch) {
-        mismatches.push(matched.softMismatch);
-      }
+    if (matched?.softMismatch) {
+      mismatches.push(matched.softMismatch);
     }
 
-    if (!dependency) {
+    if (!matched) {
       const miss = dependencyMismatch(method, url);
       mismatches.push(miss);
       hardMismatch = true;
       throw new Error(miss.message);
     }
 
-    unused.delete(dependency.seq);
+    const dependency = matched.dependency;
     if (timing === "realtime") {
       await paceDependencyCompletion(
         dependency,

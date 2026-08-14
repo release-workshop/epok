@@ -1,7 +1,7 @@
 {
   "name": "@epok/core",
   "version": "0.0.0",
-  "description": "Epok Interaction, CAS, Storage Provider, and replay match contracts",
+  "description": "Epok Interaction, CAS, and Storage Provider contracts",
   "type": "module",
   "exports": {
     ".": {
