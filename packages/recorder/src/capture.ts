@@ -117,10 +117,20 @@ export function nodeRequestUrl(req: IncomingMessage): string {
  * (Content-Length > 0 or Transfer-Encoding), or a method that commonly carries
  * a body even when framing headers are incomplete.
  */
-export function expectsInboundBody(req: IncomingMessage): boolean {
+function expectsInboundBody(req: IncomingMessage): boolean {
   if (hasFramedInboundBody(req)) return true;
   const method = (req.method ?? "GET").toUpperCase();
   return method === "POST" || method === "PUT" || method === "PATCH";
+}
+
+function expectsFetchInboundBody(request: Request): boolean {
+  const method = request.method.toUpperCase();
+  if (method === "POST" || method === "PUT" || method === "PATCH") {
+    return true;
+  }
+  const length = request.headers.get("content-length");
+  if (length !== null && Number(length) > 0) return true;
+  return request.headers.has("transfer-encoding");
 }
 
 function hasFramedInboundBody(req: IncomingMessage): boolean {
@@ -240,7 +250,7 @@ function shouldSkipBodyCapture(
 }
 
 /** Elide if skip is already required. Returns true when body capture should stop. */
-export function skipOrElideBodies(
+function skipOrElideBodies(
   pressure: PressureController,
   buf: CaptureBuffers,
 ): boolean {
@@ -253,7 +263,7 @@ export function skipOrElideBodies(
  * Elide before pulling a body whose known size would exceed the byte budget.
  * Returns true when the caller should skip expensive body work.
  */
-export function skipOrElideKnownSize(
+function skipOrElideKnownSize(
   pressure: PressureController,
   buf: CaptureBuffers,
   byteLength: number,
@@ -278,7 +288,7 @@ function contentLengthBytes(headers: Headers): number | undefined {
 }
 
 /** Skip body work when Content-Length is known to exceed the remaining budget. */
-export function skipOrElideContentLength(
+function skipOrElideContentLength(
   pressure: PressureController,
   buf: CaptureBuffers,
   headers: Headers,
@@ -289,7 +299,7 @@ export function skipOrElideContentLength(
 }
 
 /** Node inbound variant using IncomingMessage headers. */
-export function skipOrElideNodeContentLength(
+function skipOrElideNodeContentLength(
   pressure: PressureController,
   buf: CaptureBuffers,
   req: IncomingMessage,
@@ -306,7 +316,7 @@ export function skipOrElideNodeContentLength(
 }
 
 /** Skip when a buffered BodyInit size is known to exceed the remaining budget. */
-export function skipOrElideBufferedBodyInit(
+function skipOrElideBufferedBodyInit(
   pressure: PressureController,
   buf: CaptureBuffers,
   body: BodyInit | null | undefined,
@@ -388,7 +398,7 @@ function chunkToBuffer(
 }
 
 /** Capture response bytes by wrapping write/end (fail-open). */
-export function installResponseCapture(
+function installResponseCapture(
   res: ServerResponse,
   buf: CaptureBuffers,
   pressure: PressureController,
@@ -458,7 +468,7 @@ export function installResponseCapture(
 }
 
 /** Best-effort inbound body tee via push hook (does not consume the stream). */
-export function installInboundBodyCapture(
+function installInboundBodyCapture(
   req: IncomingMessage,
   buf: CaptureBuffers,
   pressure: PressureController,
@@ -546,7 +556,7 @@ export function buildObservedCapture(
  * Extract bytes from a buffered BodyInit without cloning a stream.
  * Returns `null` when omitted or streaming (caller may try another source).
  */
-export function readBufferedBodyInit(
+function readBufferedBodyInit(
   body: BodyInit | null | undefined,
 ): Uint8Array | null {
   if (body === undefined) return null;
@@ -571,7 +581,7 @@ export function readBufferedBodyInit(
  * single underlying pull (no parallel `clone().arrayBuffer()`). Fail-open:
  * on tee failure, return the original response and an empty capture body.
  */
-export function teeFetchResponseBody(response: Response): {
+function teeFetchResponseBody(response: Response): {
   response: Response;
   captureBody: Promise<Uint8Array>;
 } {
@@ -613,7 +623,7 @@ export function teeFetchResponseBody(response: Response): {
 }
 
 /** Reserve captured body bytes under pressure; empty on budget failure. */
-export function takeCapturedBytes(
+function takeCapturedBytes(
   pressure: PressureController,
   buf: CaptureBuffers,
   bytes: Uint8Array,
@@ -623,4 +633,291 @@ export function takeCapturedBytes(
     return new Uint8Array();
   }
   return bytes;
+}
+
+function isFetchRequest(source: IncomingMessage | Request): source is Request {
+  return typeof Request !== "undefined" && source instanceof Request;
+}
+
+function isNodeServerResponse(
+  source: ServerResponse | Response,
+): source is ServerResponse {
+  return (
+    typeof (source as ServerResponse).write === "function" &&
+    typeof (source as ServerResponse).end === "function"
+  );
+}
+
+/**
+ * Decide-and-attach inbound request body capture. No-ops when no body is
+ * expected, already elided/dropped, or Content-Length exceeds the budget.
+ */
+export function captureInboundRequestBody(
+  buf: CaptureBuffers,
+  pressure: PressureController,
+  source: IncomingMessage | Request,
+): void {
+  if (isFetchRequest(source)) {
+    if (!expectsFetchInboundBody(source)) return;
+    if (skipOrElideContentLength(pressure, buf, source.headers)) return;
+    beginBodyRead(buf);
+    void (async () => {
+      try {
+        const body = source.body;
+        if (!body) {
+          buf.inboundBody = new Uint8Array();
+          return;
+        }
+        const bytes = new Uint8Array(await source.clone().arrayBuffer());
+        buf.inboundBody = takeCapturedBytes(pressure, buf, bytes);
+      } catch {
+        // Fail-open.
+      } finally {
+        endBodyRead(buf);
+      }
+    })();
+    return;
+  }
+
+  if (!expectsInboundBody(source)) return;
+  if (skipOrElideNodeContentLength(pressure, buf, source)) return;
+  installInboundBodyCapture(source, buf, pressure);
+}
+
+/**
+ * Decide-and-attach inbound response body capture.
+ * Node: wrap write/end. Fetch: stamp terminal metadata and tee (or elide).
+ */
+export function captureInboundResponseBody(
+  buf: CaptureBuffers,
+  pressure: PressureController,
+  source: ServerResponse,
+): void;
+export function captureInboundResponseBody(
+  buf: CaptureBuffers,
+  pressure: PressureController,
+  source: Response,
+): Response;
+export function captureInboundResponseBody(
+  buf: CaptureBuffers,
+  pressure: PressureController,
+  source: ServerResponse | Response,
+): void | Response {
+  if (isNodeServerResponse(source)) {
+    installResponseCapture(source, buf, pressure);
+    return;
+  }
+
+  buf.statusCode = source.status;
+  buf.statusText = source.statusText;
+  buf.inboundTerminalObserved = true;
+  buf.responseHeaders = headersToFields(source.headers);
+  if (buf.responseStartedAt === 0) {
+    buf.responseStartedAt = performance.now() - buf.startedAt;
+  }
+  if (skipOrElideContentLength(pressure, buf, source.headers)) {
+    buf.responseBody = new Uint8Array();
+    buf.responseEndedAt = performance.now() - buf.startedAt;
+    return source;
+  }
+  beginBodyRead(buf);
+  const teed = teeFetchResponseBody(source);
+  void (async () => {
+    try {
+      const body = await teed.captureBody;
+      buf.responseBody = takeCapturedBytes(pressure, buf, body);
+      buf.responseEndedAt = performance.now() - buf.startedAt;
+    } catch {
+      // Fail-open.
+    } finally {
+      endBodyRead(buf);
+    }
+  })();
+  return teed.response;
+}
+
+export function inboundSnapshotFromFetch(request: Request): InboundSnapshot {
+  return {
+    protocol: "HTTP/1.1",
+    method: request.method,
+    url: request.url,
+    headers: headersToFields(request.headers),
+    contentType: request.headers.get("content-type"),
+  };
+}
+
+/**
+ * After a Dependency network return: elide or capture request/response bodies.
+ * Returns the app-visible Response (possibly teed).
+ */
+export function captureDependency(input: {
+  row: ObservedDependency;
+  buf: CaptureBuffers;
+  pressure: PressureController;
+  fetchInput: RequestInfo | URL;
+  init?: RequestInit;
+  response: Response;
+}): Response {
+  const { row, buf, pressure, fetchInput, init, response } = input;
+  if (
+    skipOrElideBufferedBodyInit(pressure, buf, init?.body) ||
+    skipOrElideContentLength(pressure, buf, response.headers)
+  ) {
+    finishDependencyWithoutBodies({ row, buf, fetchInput, init, response });
+    return response;
+  }
+  return scheduleDependencyCapture({
+    row,
+    buf,
+    fetchInput,
+    init,
+    response,
+    pressure,
+  });
+}
+
+function scheduleDependencyCapture(input: {
+  row: ObservedDependency;
+  buf: CaptureBuffers;
+  fetchInput: RequestInfo | URL;
+  init?: RequestInit;
+  response: Response;
+  pressure: PressureController;
+}): Response {
+  const { row, buf, fetchInput, init, response, pressure } = input;
+  beginBodyRead(buf);
+  const teed = teeFetchResponseBody(response);
+  const appResponse = teed.response;
+  const captureBody = teed.captureBody;
+
+  void (async () => {
+    try {
+      const request = new Request(fetchInput, init);
+      const requestBody = await readOutboundRequestBody(
+        request,
+        init,
+        pressure,
+        buf,
+      );
+      const responseBody = takeCapturedBytes(pressure, buf, await captureBody);
+      if (buf.dropped || (buf.frozen && !row.networkReturned)) return;
+      const endedAt = Math.max(
+        row.startedAt,
+        Math.round(performance.now() - buf.startedAt),
+      );
+      row.endedAt = endedAt;
+      row.request = {
+        protocol: "HTTP/1.1",
+        method: request.method,
+        url: request.url,
+        headers: headersToFields(request.headers),
+        body: requestBody,
+        contentType: request.headers.get("content-type"),
+      };
+      row.response = {
+        protocol: "HTTP/1.1",
+        status: response.status,
+        statusText: response.statusText,
+        headers: headersToFields(response.headers),
+        body: responseBody,
+        contentType: response.headers.get("content-type"),
+      };
+    } catch {
+      // Fail-open: leave invoke-time row (possibly unterminated).
+    } finally {
+      endBodyRead(buf);
+    }
+  })();
+
+  return appResponse;
+}
+
+async function readOutboundRequestBody(
+  request: Request,
+  init: RequestInit | undefined,
+  pressure: PressureController,
+  buf: CaptureBuffers,
+): Promise<Uint8Array> {
+  try {
+    const fromInit = readOutboundBodyFromInit(init, pressure, buf);
+    if (fromInit !== undefined) return fromInit;
+    return await readOutboundBodyFromRequest(request, pressure, buf);
+  } catch {
+    return new Uint8Array();
+  }
+}
+
+/** `undefined` means init had no buffered body — try the Request stream. */
+function readOutboundBodyFromInit(
+  init: RequestInit | undefined,
+  pressure: PressureController,
+  buf: CaptureBuffers,
+): Uint8Array | undefined {
+  const buffered = readBufferedBodyInit(init?.body);
+  if (buffered === null) return undefined;
+  if (skipOrElideKnownSize(pressure, buf, buffered.byteLength)) {
+    return new Uint8Array();
+  }
+  return takeCapturedBytes(pressure, buf, buffered);
+}
+
+async function readOutboundBodyFromRequest(
+  request: Request,
+  pressure: PressureController,
+  buf: CaptureBuffers,
+): Promise<Uint8Array> {
+  if (!request.body) return new Uint8Array();
+  const contentLength = request.headers.get("content-length");
+  if (contentLength !== null && contentLength !== "") {
+    const length = Number(contentLength);
+    if (
+      Number.isFinite(length) &&
+      length >= 0 &&
+      skipOrElideKnownSize(pressure, buf, length)
+    ) {
+      return new Uint8Array();
+    }
+  }
+  const bytes = new Uint8Array(await request.arrayBuffer());
+  if (skipOrElideKnownSize(pressure, buf, bytes.byteLength)) {
+    return new Uint8Array();
+  }
+  return takeCapturedBytes(pressure, buf, bytes);
+}
+
+function finishDependencyWithoutBodies(input: {
+  row: ObservedDependency;
+  buf: CaptureBuffers;
+  fetchInput: RequestInfo | URL;
+  init?: RequestInit;
+  response: Response;
+}): void {
+  const { row, buf, fetchInput, init, response } = input;
+  if (buf.dropped || (buf.frozen && !row.networkReturned)) return;
+  const endedAt = Math.max(
+    row.startedAt,
+    Math.round(performance.now() - buf.startedAt),
+  );
+  row.endedAt = endedAt;
+  row.response = {
+    protocol: "HTTP/1.1",
+    status: response.status,
+    statusText: response.statusText,
+    headers: headersToFields(response.headers),
+    body: new Uint8Array(),
+    contentType: response.headers.get("content-type"),
+  };
+  try {
+    const request = new Request(fetchInput, init);
+    row.request = {
+      protocol: "HTTP/1.1",
+      method: request.method,
+      url: request.url,
+      headers: headersToFields(request.headers),
+      body: new Uint8Array(),
+      contentType: request.headers.get("content-type"),
+    };
+  } catch {
+    // Keep invoke-time request line.
+  }
 }

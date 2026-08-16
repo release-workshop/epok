@@ -2,12 +2,10 @@ import * as http from "node:http";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { AttachRuntime } from "./attach-runtime.js";
 import {
-  expectsInboundBody,
+  captureInboundRequestBody,
+  captureInboundResponseBody,
   inboundSnapshotFromNode,
-  installInboundBodyCapture,
-  installResponseCapture,
   noteInboundTerminal,
-  skipOrElideNodeContentLength,
   type CaptureBuffers,
 } from "./capture.js";
 import { requestContext, type RequestCaptureContext } from "./context.js";
@@ -37,12 +35,8 @@ function runCaptureRequest(input: {
 }): boolean {
   const { runtime, ctx, buf, req, res, emitHost } = input;
   try {
-    if (expectsInboundBody(req)) {
-      if (!skipOrElideNodeContentLength(runtime.pressure, buf, req)) {
-        installInboundBodyCapture(req, buf, runtime.pressure);
-      }
-    }
-    installResponseCapture(res, buf, runtime.pressure);
+    captureInboundRequestBody(buf, runtime.pressure, req);
+    captureInboundResponseBody(buf, runtime.pressure, res);
   } catch {
     // Fail-open.
   }

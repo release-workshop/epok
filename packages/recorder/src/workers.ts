@@ -2,10 +2,10 @@ import type { RecorderObservationHooks, StorageProvider } from "@epok/core";
 import { attachRuntimeOptions, createAttachRuntime } from "./attach-runtime.js";
 import type { CaptureMode } from "./capture-mode.js";
 import {
-  captureFetchResponse,
+  captureInboundRequestBody,
+  captureInboundResponseBody,
   inboundSnapshotFromFetch,
-  readFetchInboundBody,
-} from "./workers-capture.js";
+} from "./capture.js";
 import { requestContext } from "./context.js";
 import type { RecorderWideEvent } from "./events.js";
 import type { RecorderPressureLimits } from "./pressure.js";
@@ -94,7 +94,7 @@ export function attachWorkersRecorder(
       const { ctx, buf } = begun;
       return requestContext.run(ctx, async () => {
         try {
-          readFetchInboundBody(request, buf, runtime.pressure);
+          captureInboundRequestBody(buf, runtime.pressure, request);
         } catch {
           // Fail-open.
         }
@@ -124,7 +124,11 @@ export function attachWorkersRecorder(
 
         runtime.observeResponse(ctx, response);
 
-        const captured = captureFetchResponse(response, buf, runtime.pressure);
+        const captured = captureInboundResponseBody(
+          buf,
+          runtime.pressure,
+          response,
+        );
         runSettle(false);
 
         return captured;

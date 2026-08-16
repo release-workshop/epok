@@ -1,4 +1,4 @@
-import { createServer, type IncomingMessage, type Server } from "node:http";
+import { createServer, type Server } from "node:http";
 import { afterEach, describe, expect, it } from "vitest";
 import type { InteractionManifest, StorageProvider } from "@epok/core";
 import {
@@ -6,58 +6,7 @@ import {
   type RecorderHandle,
   type RecorderWideEvent,
 } from "../src/index.js";
-import { expectsInboundBody } from "../src/capture.js";
 import { createCaptureContext } from "../src/context.js";
-
-describe("expectsInboundBody", () => {
-  it("is false for GET without a framed body", () => {
-    expect(
-      expectsInboundBody(
-        requestLike({ method: "GET", headers: { host: "localhost" } }),
-      ),
-    ).toBe(false);
-  });
-
-  it("is true when Content-Length frames a body", () => {
-    expect(
-      expectsInboundBody(
-        requestLike({
-          method: "POST",
-          headers: {
-            host: "localhost",
-            "content-length": "12",
-            "content-type": "application/json",
-          },
-        }),
-      ),
-    ).toBe(true);
-  });
-
-  it("is true when Transfer-Encoding is chunked", () => {
-    expect(
-      expectsInboundBody(
-        requestLike({
-          method: "PUT",
-          headers: {
-            host: "localhost",
-            "transfer-encoding": "chunked",
-          },
-        }),
-      ),
-    ).toBe(true);
-  });
-
-  it("is true for POST even when Content-Length is 0", () => {
-    expect(
-      expectsInboundBody(
-        requestLike({
-          method: "POST",
-          headers: { host: "localhost", "content-length": "0" },
-        }),
-      ),
-    ).toBe(true);
-  });
-});
 
 describe("createCaptureContext identity", () => {
   it("defers id allocation until interactionId is read", () => {
@@ -157,13 +106,6 @@ describe("attachRecorder inbound body collect", () => {
     expect(inboundBytes.byteLength).toBe(0);
   });
 });
-
-function requestLike(input: {
-  method: string;
-  headers: IncomingMessage["headers"];
-}): IncomingMessage {
-  return input as IncomingMessage;
-}
 
 function memoryStorage(): StorageProvider & {
   manifests: Map<string, Uint8Array>;
