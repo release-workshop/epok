@@ -1,7 +1,6 @@
 import * as http from "node:http";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import type { RecorderObservationHooks, StorageProvider } from "@epok/core";
-import type { CaptureMode } from "./capture-mode.js";
+import type { AttachRuntime } from "./attach-runtime.js";
 import {
   expectsInboundBody,
   inboundSnapshotFromNode,
@@ -9,15 +8,9 @@ import {
   installResponseCapture,
   noteInboundTerminal,
   skipOrElideNodeContentLength,
+  type CaptureBuffers,
 } from "./capture.js";
-import { createCaptureContext, requestContext } from "./context.js";
-import type { EmitWideEvent } from "./observe.js";
-import { observeInbound, observeResponse } from "./observe.js";
-import type { PressureController } from "./pressure.js";
-import type { BoundedAsyncQueue } from "./queue.js";
-import { settleInteraction } from "./settle.js";
-
-type ServerEmit = typeof http.Server.prototype.emit;
+import { requestContext, type RequestCaptureContext } from "./context.js";
 
 function inboundRequestFromNode(req: IncomingMessage): Request {
   const host = req.headers.host ?? "localhost";
@@ -34,35 +27,78 @@ function inboundRequestFromNode(req: IncomingMessage): Request {
   });
 }
 
-export interface InboundAttachDeps {
-  /** When false, wrappers + ALS stay active but capture/persist are skipped. */
-  enabled: boolean;
-  captureMode: CaptureMode;
-  hooks: RecorderObservationHooks | undefined;
-  emit: EmitWideEvent | undefined;
-  storage: StorageProvider;
-  pressure: PressureController;
-  queue: BoundedAsyncQueue;
-  trackSettle: (promise: Promise<void>) => void;
+function runCaptureRequest(input: {
+  runtime: AttachRuntime;
+  ctx: RequestCaptureContext;
+  buf: CaptureBuffers;
+  req: IncomingMessage;
+  res: ServerResponse;
+  emitHost: () => boolean;
+}): boolean {
+  const { runtime, ctx, buf, req, res, emitHost } = input;
+  try {
+    if (expectsInboundBody(req)) {
+      if (!skipOrElideNodeContentLength(runtime.pressure, buf, req)) {
+        installInboundBodyCapture(req, buf, runtime.pressure);
+      }
+    }
+    installResponseCapture(res, buf, runtime.pressure);
+  } catch {
+    // Fail-open.
+  }
+
+  runtime.observeInbound(ctx, inboundRequestFromNode(req));
+
+  let settled = false;
+  const settle = (): void => {
+    if (settled) return;
+    settled = true;
+    runtime.trackSettle(
+      runtime.settle({
+        interactionId: ctx.interactionId,
+        buf,
+        inbound: inboundSnapshotFromNode(req),
+        refreshTerminal: () => {
+          if (res.errored != null) {
+            buf.terminalHostError = true;
+          }
+          if (res.headersSent) noteInboundTerminal(buf, res);
+        },
+      }),
+    );
+  };
+  res.once("finish", () => {
+    noteInboundTerminal(buf, res);
+    runtime.observeResponse(
+      ctx,
+      new Response(null, { status: res.statusCode }),
+    );
+    settle();
+  });
+  res.once("close", () => {
+    if (res.headersSent) noteInboundTerminal(buf, res);
+    settle();
+  });
+
+  try {
+    return emitHost();
+  } catch (err) {
+    buf.terminalHostError = true;
+    settle();
+    throw err;
+  }
 }
 
 /**
  * Patch `http.Server` so each inbound request runs inside AsyncLocalStorage,
- * collects a capture buffer, and enqueues sanitize/finalize/persist off-path.
+ * collects a capture buffer, and settles via the shared attach runtime.
  * Returns a restore function.
  */
-export function installInboundAttach(deps: InboundAttachDeps): () => void {
-  const {
-    enabled,
-    captureMode,
-    hooks,
-    emit,
-    storage,
-    pressure,
-    queue,
-    trackSettle,
-  } = deps;
-  const originalEmit: ServerEmit = Reflect.get(http.Server.prototype, "emit");
+export function installInboundAttach(runtime: AttachRuntime): () => void {
+  const originalEmit: typeof http.Server.prototype.emit = Reflect.get(
+    http.Server.prototype,
+    "emit",
+  );
 
   function patchedEmit(
     this: http.Server,
@@ -75,109 +111,34 @@ export function installInboundAttach(deps: InboundAttachDeps): () => void {
 
     const req = args[0] as IncomingMessage;
     const res = args[1] as ServerResponse;
+    const begun = runtime.begin();
+    const emitHost = (): boolean =>
+      Reflect.apply(originalEmit, this, [event, ...args]) as boolean;
 
-    if (!enabled) {
-      const ctx = createCaptureContext(false);
-      return requestContext.run(
-        ctx,
-        () => Reflect.apply(originalEmit, this, [event, ...args]) as boolean,
-      );
+    if (begun.kind === "disabled") {
+      return requestContext.run(begun.ctx, emitHost);
     }
 
-    pressure.recordObserved();
-    const acquired = !pressure.sheddingActive && pressure.tryAcquireContext();
-    const ctx = createCaptureContext(acquired);
-
-    if (!acquired) {
-      const reason = pressure.sheddingActive
-        ? "queue_full"
-        : "active_contexts_budget";
-      pressure.recordDrop(reason, ctx.interactionId);
-      return requestContext.run(ctx, () => {
-        observeInbound(ctx, inboundRequestFromNode(req), hooks, emit);
+    if (begun.kind === "shed") {
+      return requestContext.run(begun.ctx, () => {
+        runtime.observeInbound(begun.ctx, inboundRequestFromNode(req));
         res.once("finish", () => {
-          observeResponse(
-            ctx,
+          runtime.observeResponse(
+            begun.ctx,
             new Response(null, { status: res.statusCode }),
-            hooks,
-            emit,
           );
         });
-        return Reflect.apply(originalEmit, this, [event, ...args]) as boolean;
+        return emitHost();
       });
     }
 
-    return requestContext.run(ctx, () => {
-      const buf = ctx.capture;
-      if (!buf) {
-        return Reflect.apply(originalEmit, this, [event, ...args]) as boolean;
-      }
-      buf.interactionId = ctx.interactionId;
-      try {
-        if (expectsInboundBody(req)) {
-          if (!skipOrElideNodeContentLength(pressure, buf, req)) {
-            installInboundBodyCapture(req, buf, pressure);
-          }
-        }
-        installResponseCapture(res, buf, pressure);
-      } catch {
-        // Fail-open.
-      }
-
-      observeInbound(ctx, inboundRequestFromNode(req), hooks, emit);
-
-      let settled = false;
-      const settle = (): void => {
-        if (settled) return;
-        settled = true;
-        trackSettle(
-          settleInteraction({
-            interactionId: ctx.interactionId,
-            buf,
-            inbound: inboundSnapshotFromNode(req),
-            captureMode,
-            emit,
-            storage,
-            pressure,
-            queue,
-            deferOffHotPath: (work) => {
-              setImmediate(work);
-            },
-            refreshTerminal: () => {
-              if (res.errored != null) {
-                buf.terminalHostError = true;
-              }
-              if (res.headersSent) noteInboundTerminal(buf, res);
-            },
-          }),
-        );
-      };
-      res.once("finish", () => {
-        noteInboundTerminal(buf, res);
-        observeResponse(
-          ctx,
-          new Response(null, { status: res.statusCode }),
-          hooks,
-          emit,
-        );
-        settle();
-      });
-      res.once("close", () => {
-        if (res.headersSent) noteInboundTerminal(buf, res);
-        settle();
-      });
-
-      try {
-        return Reflect.apply(originalEmit, this, [event, ...args]) as boolean;
-      } catch (err) {
-        buf.terminalHostError = true;
-        settle();
-        throw err;
-      }
-    });
+    const { ctx, buf } = begun;
+    return requestContext.run(ctx, () =>
+      runCaptureRequest({ runtime, ctx, buf, req, res, emitHost }),
+    );
   }
 
-  http.Server.prototype.emit = patchedEmit as ServerEmit;
+  http.Server.prototype.emit = patchedEmit as typeof http.Server.prototype.emit;
   return () => {
     http.Server.prototype.emit = originalEmit;
   };

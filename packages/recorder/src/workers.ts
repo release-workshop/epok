@@ -1,23 +1,15 @@
 import type { RecorderObservationHooks, StorageProvider } from "@epok/core";
-import { DEFAULT_CAPTURE_MODE, type CaptureMode } from "./capture-mode.js";
+import { attachRuntimeOptions, createAttachRuntime } from "./attach-runtime.js";
+import type { CaptureMode } from "./capture-mode.js";
 import {
   captureFetchResponse,
   inboundSnapshotFromFetch,
   readFetchInboundBody,
 } from "./workers-capture.js";
-import { createCaptureContext, requestContext } from "./context.js";
+import { requestContext } from "./context.js";
 import type { RecorderWideEvent } from "./events.js";
-import { installFetchIntercept } from "./outbound.js";
-import { observeInbound, observeResponse } from "./observe.js";
-import {
-  DEFAULT_PRESSURE_LIMITS,
-  PressureController,
-  type RecorderPressureLimits,
-} from "./pressure.js";
-import { BoundedAsyncQueue } from "./queue.js";
-import { snapshotRecorderStats, type RecorderStats } from "./stats.js";
-import { createSettleTracker, settleInteraction } from "./settle.js";
-import { createWideEventEmit } from "./wide-event-emit.js";
+import type { RecorderPressureLimits } from "./pressure.js";
+import type { RecorderStats } from "./stats.js";
 
 export type { RecorderObservationHooks, StorageProvider };
 export type { CaptureMode } from "./capture-mode.js";
@@ -75,81 +67,48 @@ const DEFAULT_WORKERS_RUNTIME = {
 export function attachWorkersRecorder(
   options: AttachWorkersRecorderOptions,
 ): WorkersRecorderHandle {
-  const enabled = options.enabled !== false;
-  const captureMode = options.captureMode ?? DEFAULT_CAPTURE_MODE;
-  const runtime = options.runtime ?? DEFAULT_WORKERS_RUNTIME;
-  const emit = createWideEventEmit(options.onEvent);
-
-  const limits: RecorderPressureLimits = {
-    ...DEFAULT_PRESSURE_LIMITS,
-    ...options.pressure,
-  };
-  const pressure = new PressureController(limits, emit);
-  const queue = new BoundedAsyncQueue(pressure);
-  const settles = createSettleTracker();
-
-  const restoreFetch = installFetchIntercept(
-    options.hooks,
-    emit,
-    pressure,
-    enabled,
+  const runtimeIdentity = options.runtime ?? DEFAULT_WORKERS_RUNTIME;
+  const runtime = createAttachRuntime(
+    attachRuntimeOptions(options, (work) => {
+      queueMicrotask(work);
+    }),
   );
 
   function wrapHandler(handler: WorkersFetchHandler): WorkersFetchHandler {
     return async (request: Request): Promise<Response> => {
-      if (!enabled) {
-        const ctx = createCaptureContext(false);
-        return requestContext.run(ctx, () => handler(request));
+      const begun = runtime.begin();
+
+      if (begun.kind === "disabled") {
+        return requestContext.run(begun.ctx, () => handler(request));
       }
 
-      pressure.recordObserved();
-      const acquired = !pressure.sheddingActive && pressure.tryAcquireContext();
-      const ctx = createCaptureContext(acquired);
-
-      if (!acquired) {
-        const reason = pressure.sheddingActive
-          ? "queue_full"
-          : "active_contexts_budget";
-        pressure.recordDrop(reason, ctx.interactionId);
-        return requestContext.run(ctx, async () => {
-          observeInbound(ctx, request, options.hooks, emit);
+      if (begun.kind === "shed") {
+        return requestContext.run(begun.ctx, async () => {
+          runtime.observeInbound(begun.ctx, request);
           const response = await handler(request);
-          observeResponse(ctx, response, options.hooks, emit);
+          runtime.observeResponse(begun.ctx, response);
           return response;
         });
       }
 
+      const { ctx, buf } = begun;
       return requestContext.run(ctx, async () => {
-        const buf = ctx.capture;
-        if (!buf) {
-          return handler(request);
-        }
-        buf.interactionId = ctx.interactionId;
-
         try {
-          readFetchInboundBody(request, buf, pressure);
+          readFetchInboundBody(request, buf, runtime.pressure);
         } catch {
           // Fail-open.
         }
 
-        observeInbound(ctx, request, options.hooks, emit);
+        runtime.observeInbound(ctx, request);
 
         const runSettle = (hostError: boolean): void => {
-          settles.track(
-            settleInteraction({
+          runtime.trackSettle(
+            runtime.settle({
               interactionId: ctx.interactionId,
               buf,
               inbound: inboundSnapshotFromFetch(request),
-              captureMode,
-              emit,
-              storage: options.storage,
-              pressure,
-              queue,
-              deferOffHotPath: (work) => {
-                queueMicrotask(work);
-              },
               terminalHostError: hostError,
-              runtime,
+              runtime: runtimeIdentity,
             }),
           );
         };
@@ -163,9 +122,9 @@ export function attachWorkersRecorder(
           throw err;
         }
 
-        observeResponse(ctx, response, options.hooks, emit);
+        runtime.observeResponse(ctx, response);
 
-        const captured = captureFetchResponse(response, buf, pressure);
+        const captured = captureFetchResponse(response, buf, runtime.pressure);
         runSettle(false);
 
         return captured;
@@ -179,17 +138,16 @@ export function attachWorkersRecorder(
     detach(): void {
       if (detached) return;
       detached = true;
-      restoreFetch();
-      queue.close();
+      runtime.detach();
     },
     drain(timeoutMs = 5_000): Promise<void> {
-      return settles.drain(timeoutMs, queue);
+      return runtime.drain(timeoutMs);
     },
     stats() {
-      return snapshotRecorderStats(pressure);
+      return runtime.stats();
     },
     pressureStats() {
-      return snapshotRecorderStats(pressure);
+      return runtime.stats();
     },
   };
 }

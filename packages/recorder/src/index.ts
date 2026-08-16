@@ -1,17 +1,10 @@
 import type { RecorderObservationHooks, StorageProvider } from "@epok/core";
-import { DEFAULT_CAPTURE_MODE, type CaptureMode } from "./capture-mode.js";
+import { attachRuntimeOptions, createAttachRuntime } from "./attach-runtime.js";
+import type { CaptureMode } from "./capture-mode.js";
 import type { RecorderWideEvent } from "./events.js";
 import { installInboundAttach } from "./inbound.js";
-import { installFetchIntercept } from "./outbound.js";
-import {
-  DEFAULT_PRESSURE_LIMITS,
-  PressureController,
-  type RecorderPressureLimits,
-} from "./pressure.js";
-import { BoundedAsyncQueue } from "./queue.js";
-import { createSettleTracker } from "./settle.js";
-import { snapshotRecorderStats, type RecorderStats } from "./stats.js";
-import { createWideEventEmit } from "./wide-event-emit.js";
+import type { RecorderPressureLimits } from "./pressure.js";
+import type { RecorderStats } from "./stats.js";
 
 export type { RecorderObservationHooks, StorageProvider };
 export type { CaptureMode } from "./capture-mode.js";
@@ -90,54 +83,30 @@ export interface RecorderHandle {
  * with bounded async sanitize/finalize/persist and deterministic shedding.
  */
 export function attachRecorder(options: AttachRecorderOptions): RecorderHandle {
-  const enabled = options.enabled !== false;
-  const captureMode = options.captureMode ?? DEFAULT_CAPTURE_MODE;
-  const emit = createWideEventEmit(options.onEvent);
-
-  const limits: RecorderPressureLimits = {
-    ...DEFAULT_PRESSURE_LIMITS,
-    ...options.pressure,
-  };
-  const pressure = new PressureController(limits, emit);
-  const queue = new BoundedAsyncQueue(pressure);
-  const settles = createSettleTracker();
-
-  const restoreInbound = installInboundAttach({
-    enabled,
-    captureMode,
-    hooks: options.hooks,
-    emit,
-    storage: options.storage,
-    pressure,
-    queue,
-    trackSettle: (promise) => {
-      settles.track(promise);
-    },
-  });
-  const restoreFetch = installFetchIntercept(
-    options.hooks,
-    emit,
-    pressure,
-    enabled,
+  const runtime = createAttachRuntime(
+    attachRuntimeOptions(options, (work) => {
+      setImmediate(work);
+    }),
   );
+
+  const restoreInbound = installInboundAttach(runtime);
 
   let detached = false;
   return {
     detach(): void {
       if (detached) return;
       detached = true;
-      restoreFetch();
       restoreInbound();
-      queue.close();
+      runtime.detach();
     },
     drain(timeoutMs = 5_000): Promise<void> {
-      return settles.drain(timeoutMs, queue);
+      return runtime.drain(timeoutMs);
     },
     stats() {
-      return snapshotRecorderStats(pressure);
+      return runtime.stats();
     },
     pressureStats() {
-      return snapshotRecorderStats(pressure);
+      return runtime.stats();
     },
   };
 }

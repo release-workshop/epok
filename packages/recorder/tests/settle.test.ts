@@ -35,7 +35,9 @@ function setup(limits?: { maxQueueDepth?: number }) {
     },
     emit,
   );
-  const queue = new BoundedAsyncQueue(pressure);
+  const queue = new BoundedAsyncQueue(pressure, (work) => {
+    setImmediate(work);
+  });
   const storage = createMemoryStorageProvider();
   const buf = createCaptureBuffers();
   buf.statusCode = 200;

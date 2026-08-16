@@ -1,4 +1,5 @@
 import type { PressureController } from "./pressure.js";
+import type { DeferOffHotPath } from "./settle.js";
 
 export type QueueJob = () => Promise<void>;
 
@@ -9,12 +10,14 @@ export type QueueJob = () => Promise<void>;
  */
 export class BoundedAsyncQueue {
   private readonly pressure: PressureController;
+  private readonly deferJob: DeferOffHotPath;
   private readonly pending: QueueJob[] = [];
   private running = 0;
   private closed = false;
 
-  constructor(pressure: PressureController) {
+  constructor(pressure: PressureController, deferJob: DeferOffHotPath) {
     this.pressure = pressure;
+    this.deferJob = deferJob;
   }
 
   get depth(): number {
@@ -61,10 +64,10 @@ export class BoundedAsyncQueue {
       if (!job) break;
       this.running += 1;
       this.pressure.setQueueDepth(this.depth);
-      // setImmediate yields to the HTTP poll phase so finalize/persist does not
-      // starve inbound request handling under load (credibility B bar).
+      // deferJob yields so finalize/persist does not starve inbound handling
+      // (Node: setImmediate; Fetch: queueMicrotask).
       void new Promise<void>((resolve) => {
-        setImmediate(resolve);
+        this.deferJob(resolve);
       })
         .then(() => job())
         .catch(() => {
